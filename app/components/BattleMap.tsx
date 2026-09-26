@@ -53,9 +53,10 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
     if (!before || (before.x === u.x && before.y === u.y)) return [];
     const [x1, y1] = center(before).map(v => v * C), [x2, y2] = center(u).map(v => v * C);
     const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len;
-    const r = (footprint(u) * C) / 2 - 3, hs = Math.max(4, C * 0.2);
-    const ex = x2 - ux * (r + 5), ey = y2 - uy * (r + 5);
-    return [{ id: u.id, x1, y1, r, sx: x1 + ux * r, sy: y1 + uy * r, ex, ey,
+    // Half-size of the square token, and the distance from its center to its edge along the move direction.
+    const r = (footprint(u) * C) / 2 - 2, edge = r / Math.max(Math.abs(ux), Math.abs(uy)), hs = Math.max(4, C * 0.2);
+    const ex = x2 - ux * (edge + 4), ey = y2 - uy * (edge + 4);
+    return [{ id: u.id, x1, y1, r, sx: x1 + ux * edge, sy: y1 + uy * edge, ex, ey,
       head: `M${ex + ux * hs} ${ey + uy * hs} L${ex - uy * hs * 0.6} ${ey + ux * hs * 0.6} L${ex + uy * hs * 0.6} ${ey - ux * hs * 0.6} Z` }];
   }) : [];
 
@@ -114,7 +115,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
 
         {moves.map(mv => (
           <g key={mv.id} pointerEvents="none">
-            <circle cx={mv.x1} cy={mv.y1} r={mv.r} fill="none" stroke={tones.safe} strokeOpacity="0.45" strokeWidth="1.2" strokeDasharray="3 3" />
+            <rect x={mv.x1 - mv.r} y={mv.y1 - mv.r} width={mv.r * 2} height={mv.r * 2} rx={Math.max(3, C * 0.12)} fill="none" stroke={tones.safe} strokeOpacity="0.45" strokeWidth="1.2" strokeDasharray="3 3" />
             <line x1={mv.sx} y1={mv.sy} x2={mv.ex} y2={mv.ey} stroke={tones.safe} strokeOpacity="0.8" strokeWidth="1.6" strokeDasharray="4 3" strokeLinecap="round" />
             <path d={mv.head} fill={tones.safe} fillOpacity="0.9" />
           </g>
@@ -177,18 +178,19 @@ function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean
   const type = unitTypes[u.kind as keyof typeof unitTypes];
   const big = u.kind === 'boss';
   const [cx, cy] = center(u).map(v => v * C);
-  const r = big ? C - 4 : C / 2 - 3;
-  const icon = Math.round(r * 2 * (big ? 0.5 : 0.56));
+  // Tokens fill their whole footprint, inset just enough to keep the tile grid visible.
+  const inset = 2, size = footprint(u) * C - inset * 2, r = size / 2, rx = Math.max(3, C * (big ? 0.18 : 0.14));
+  const icon = Math.round(size * (big ? 0.46 : 0.54));
   return (
     <g data-entity={u.id} style={{ cursor: 'grab' }} aria-label={`${u.name}, ${tileLabel(u.x, u.y)}`}>
-      {selected && <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke={tones.safe} strokeWidth="2" />}
-      <circle cx={cx} cy={cy + 1.5} r={r} fill="rgba(0,0,0,0.35)" />
-      <circle cx={cx} cy={cy} r={r} fill={type.fill} stroke={type.color} strokeWidth={big ? 2.5 : 2} />
+      {selected && <rect x={cx - r - 3} y={cy - r - 3} width={size + 6} height={size + 6} rx={rx + 3} fill="none" stroke={tones.safe} strokeWidth="2" />}
+      <rect x={cx - r} y={cy - r + 1.5} width={size} height={size} rx={rx} fill="rgba(0,0,0,0.35)" />
+      <rect x={cx - r + 1} y={cy - r + 1} width={size - 2} height={size - 2} rx={rx} fill={type.fill} stroke={type.color} strokeWidth={big ? 2.5 : 2} />
       <svg x={cx - icon / 2} y={cy - icon / 2} width={icon} height={icon} viewBox="0 0 24 24" fill="none" stroke={type.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
         <path d={glyphs[u.kind]} />
       </svg>
       {!big && C >= 28 && u.code && (
-        <g transform={`translate(${cx} ${cy + r + 2})`}>
+        <g transform={`translate(${cx} ${cy + r - 1})`}>
           <rect x={-(u.code.length * 3 + 5)} y={-5} width={u.code.length * 6 + 10} height={11} rx="3" fill="#0f1314" stroke={type.color} />
           <text textAnchor="middle" dominantBaseline="central" y={0.5} fontSize="8" fontWeight="700" fill={type.color}>{u.code}</text>
         </g>

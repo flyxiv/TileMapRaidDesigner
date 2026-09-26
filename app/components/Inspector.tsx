@@ -45,7 +45,7 @@ function Header({ label, title, sub, kind, color, round }: { label: string; titl
   return <>
     <div className="eyebrow">{label}</div>
     <div className="selected-title">
-      <span className="selected-icon" style={{ borderColor: color, borderRadius: round ? '50%' : 8 }}><Glyph kind={kind} size={20} color={color} /></span>
+      <span className="selected-icon" style={{ borderColor: color, borderRadius: round ? 8 : '50%' }}><Glyph kind={kind} size={20} color={color} /></span>
       <div><h2>{title}</h2><p>{sub}</p></div>
     </div>
   </>;
