@@ -1,6 +1,6 @@
-import { center, footprint, isUnit, unitTypes, type Entity, type UnitKind } from '../plan';
+import { center, footprint, isUnit, unitTypes, type DialoguePlacement, type Entity, type UnitKind } from '../plan';
 
-export type Speech = { speaker: string; text: string; turnLabel: string; options: string[]; picked?: number };
+export type Speech = { speaker: string; text: string; turnLabel: string; options: string[]; picked?: number; placement?: DialoguePlacement };
 
 /** Greedy word wrap by an estimated character width; long words are split. */
 function wrap(text: string, maxChars: number, maxLines: number) {
@@ -23,20 +23,21 @@ const CHAR = 6.1, LINE = 16, OPTION = 22, PAD = 12;
 
 /**
  * A dialogue bubble drawn in map pixels (origin at the top-left tile). It points at the speaker's token when a unit
- * with that name is on the map, and otherwise sits as a narrator banner along the top edge.
+ * with that name is on the map, and is a wide banner along the top edge when the line asks for it or nobody matches.
  */
 export function SpeechBubble({ speech, units, C, mapWidth, gutter }: { speech: Speech; units: Entity[]; C: number; mapWidth: number; gutter: number }) {
   const unit = units.find(u => isUnit(u.kind) && u.name === speech.speaker);
   const color = unit ? unitTypes[unit.kind as UnitKind].color : '#c9d0cd';
-  const maxChars = 36;
+  const banner = speech.placement === 'top' || !unit;
+  const maxChars = banner ? Math.max(36, Math.floor((Math.min(mapWidth - 16, 560) - PAD * 2) / CHAR)) : 36;
   const text = wrap(speech.text || '…', maxChars, 5);
   const options = speech.options.map(o => wrap(o || 'Untitled choice', maxChars - 4, 1)[0]);
   const longest = Math.max((speech.speaker || 'Narrator').length + speech.turnLabel.length + 4, ...text.map(l => l.length), ...options.map(o => o.length + 4));
-  const w = Math.min(maxChars * CHAR + PAD * 2, Math.max(140, longest * CHAR + PAD * 2));
+  const w = banner ? Math.min(mapWidth - 16, 560) : Math.min(maxChars * CHAR + PAD * 2, Math.max(140, longest * CHAR + PAD * 2));
   const h = PAD + 16 + text.length * LINE + (options.length ? 6 + options.length * OPTION : 0) + PAD - 4;
 
   let ax: number, ay: number, below = false;
-  if (unit) {
+  if (unit && !banner) {
     const [cx, cy] = center(unit).map(v => v * C);
     const half = (footprint(unit) * C) / 2;
     // Large tokens carry a name tag above them; clear it.
@@ -54,9 +55,9 @@ export function SpeechBubble({ speech, units, C, mapWidth, gutter }: { speech: S
   return (
     <g pointerEvents="none" className="speech">
       <rect x={x} y={y + 3} width={w} height={h} rx="9" fill="rgba(0,0,0,0.45)" />
-      {unit && <path d={tail} fill="#101415" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />}
+      {!banner && <path d={tail} fill="#101415" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />}
       <rect x={x} y={y} width={w} height={h} rx="9" fill="#101415" stroke={color} strokeWidth="1.5" />
-      {unit && <path d={below ? `M${tx - 6} ${y + 1.5} L${tx + 6} ${y + 1.5}` : `M${tx - 6} ${y + h - 1.5} L${tx + 6} ${y + h - 1.5}`} stroke="#101415" strokeWidth="3" />}
+      {!banner && <path d={below ? `M${tx - 6} ${y + 1.5} L${tx + 6} ${y + 1.5}` : `M${tx - 6} ${y + h - 1.5} L${tx + 6} ${y + h - 1.5}`} stroke="#101415" strokeWidth="3" />}
       <text x={x + PAD} y={y + PAD + 7} fontSize="11" fontWeight="700" fill={color} dominantBaseline="central">{speech.speaker || 'Narrator'}</text>
       <text x={x + w - PAD} y={y + PAD + 7} fontSize="9" fontWeight="700" fill="#7f8c85" textAnchor="end" dominantBaseline="central" letterSpacing="0.6">{speech.turnLabel}</text>
       {text.map((l, i) => (

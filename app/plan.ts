@@ -56,7 +56,9 @@ export type Entity = {
 /** A choice offered on a dialogue line. `goto` names the phase the fight jumps to when it is picked. */
 export type DialogueOption = { id: string; text: string; outcome: string; goto?: string };
 /** A line of mid-fight dialogue, spoken on a turn counted from the start of its phase (1 = first turn). */
-export type DialogueLine = { id: string; turn: number; speaker: string; text: string; options: DialogueOption[] };
+/** Where a line appears on the map: over the speaking unit (the default) or as a banner across the top. */
+export type DialoguePlacement = 'unit' | 'top';
+export type DialogueLine = { id: string; turn: number; speaker: string; text: string; options: DialogueOption[]; placement?: DialoguePlacement };
 export type Phase = { id: string; name: string; notes: string; turns: number; terrain: Terrain[][]; entities: Entity[]; dialogue: DialogueLine[] };
 export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[] };
 
@@ -256,6 +258,34 @@ export function validatePlan(value: unknown): value is Plan {
       Array.isArray(f.dialogue) && f.dialogue.length <= 200 && new Set(f.dialogue.map(l => l?.id)).size === f.dialogue.length &&
       f.dialogue.every(l => l && typeof l.id === 'string' && int(l.turn, 1, 20) && typeof l.speaker === 'string' && l.speaker.length <= 60 &&
         typeof l.text === 'string' && l.text.length <= 2000 && Array.isArray(l.options) && l.options.length <= 6 &&
+        (l.placement === undefined || l.placement === 'unit' || l.placement === 'top') &&
         l.options.every(o => o && typeof o.id === 'string' && typeof o.text === 'string' && o.text.length <= 200 &&
           typeof o.outcome === 'string' && o.outcome.length <= 1000 && (o.goto === undefined || typeof o.goto === 'string'))));
+}
+
+/**
+ * Resizes every phase's grid. `anchor` (0, 0.5 or 1 per axis) picks which edge stays put: 0 keeps the left/top edge,
+ * 1 keeps the right/bottom edge, 0.5 grows or trims both sides evenly. New tiles take `fill`; units and telegraphs
+ * shift with the content and are pulled back inside if the new edge cuts them off.
+ */
+export function resizePlan(plan: Plan, cols: number, rows: number, anchor: [number, number], fill: Terrain): Plan {
+  const dx = Math.round((cols - plan.cols) * anchor[0]), dy = Math.round((rows - plan.rows) * anchor[1]);
+  const next = { ...plan, cols, rows };
+  return {
+    ...next,
+    phases: plan.phases.map(p => ({
+      ...p,
+      terrain: Array.from({ length: rows }, (_, y) => Array.from({ length: cols }, (_, x) => p.terrain[y - dy]?.[x - dx] ?? fill)),
+      entities: p.entities.map(e => clampEntity({ ...e, x: e.x + dx, y: e.y + dy }, next)),
+    })),
+  };
+}
+
+/** How many units and telegraphs a resize would push back inside the map. */
+export function countDisplaced(plan: Plan, cols: number, rows: number, anchor: [number, number]) {
+  const dx = Math.round((cols - plan.cols) * anchor[0]), dy = Math.round((rows - plan.rows) * anchor[1]);
+  return plan.phases.reduce((n, p) => n + p.entities.filter(e => {
+    const x = e.x + dx, y = e.y + dy, s = footprint(e);
+    return x < 0 || y < 0 || x + s > cols || y + s > rows;
+  }).length, 0);
 }

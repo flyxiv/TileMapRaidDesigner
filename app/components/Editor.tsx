@@ -1,10 +1,10 @@
 'use client';
-import { Copy, Download, Eraser, FileJson, Image as ImageIcon, Keyboard, MessageSquare, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
+import { Copy, Download, Eraser, FileJson, Image as ImageIcon, Keyboard, Maximize2, MessageSquare, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  clampEntity, createMechanic, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  clampEntity, createMechanic, resizePlan, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -12,6 +12,7 @@ import { BattleMap, type MapPointer } from './BattleMap';
 import { Glyph, Logo } from './glyphs';
 import { Inspector } from './Inspector';
 import { PresentView } from './PresentView';
+import { MapSizeDialog } from './MapSizeDialog';
 import { StoryPanel } from './StoryPanel';
 
 type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
@@ -59,9 +60,10 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const fitZoom = useCallback(() => {
     const el = viewportRef.current;
     if (!el) return;
-    const fit = Math.min((el.clientWidth - 48) / (initialPlan.cols * BASE_CELL + 20), (el.clientHeight - 68) / (initialPlan.rows * BASE_CELL + 20));
+    const fit = Math.min((el.clientWidth - 48) / (hist.present.cols * BASE_CELL + 20), (el.clientHeight - 68) / (hist.present.rows * BASE_CELL + 20));
     setZoom([...zoomSteps].reverse().find(z => z <= Math.min(1, fit)) ?? zoomSteps[0]);
-  }, [initialPlan.cols, initialPlan.rows]);
+  }, [hist.present.cols, hist.present.rows]);
+  // Refit when the encounter opens and whenever the map is resized (or a resize is undone).
   useLayoutEffect(fitZoom, [fitZoom]);
   const [layers, setLayers] = useState({ terrain: true, telegraphs: true, moves: true });
   const [hover, setHover] = useState<[number, number] | null>(null);
@@ -70,6 +72,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [toast, setToast] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
+  const [resizing, setResizing] = useState(false);
   const [panel, setPanel] = useState<'details' | 'story'>('details');
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -285,7 +288,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   // While the Story tab is open, the line being edited shows as a bubble over its speaker.
   const activeLine = phase.dialogue.find(l => l.id === activeLineId) ?? phase.dialogue[0];
   const speech = panel === 'story' && activeLine ? {
-    speaker: activeLine.speaker, text: activeLine.text, options: activeLine.options.map(o => o.text),
+    speaker: activeLine.speaker, text: activeLine.text, options: activeLine.options.map(o => o.text), placement: activeLine.placement,
     turnLabel: `TURN ${ranges[pi].start + Math.min(activeLine.turn, phase.turns) - 1}`,
   } : null;
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
@@ -317,7 +320,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           <div className="project-heading">
             <label className="eyebrow" htmlFor="plan-name">Encounter</label>
             <input id="plan-name" className="plan-name" value={plan.name} maxLength={120} onChange={e => commit(p => ({ ...p, name: e.target.value }), 'plan-name')} />
-            <div className="badges"><span>{plan.cols} × {plan.rows} tiles</span><span>{plan.phases.length} phase{plan.phases.length > 1 ? 's' : ''}</span></div>
+            <div className="badges"><button type="button" title="Change map size" onClick={() => setResizing(true)}><Maximize2 size={10} /> {plan.cols} × {plan.rows} tiles</button><span>{plan.phases.length} phase{plan.phases.length > 1 ? 's' : ''}</span></div>
           </div>
           <div className="tool-sections">
             <section>
@@ -392,7 +395,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             </div>
             <div className="toolbar-center">
               <span>Tool: <b>{toolLabel}</b></span>
-              {hover && <><i>·</i><span>Tile <b>{tileLabel(...hover)}</b> {terrainTypes[phase.terrain[hover[1]][hover[0]]].name}</span></>}
+              {hover && phase.terrain[hover[1]]?.[hover[0]] && <><i>·</i><span>Tile <b>{tileLabel(...hover)}</b> {terrainTypes[phase.terrain[hover[1]][hover[0]]].name}</span></>}
             </div>
             <div className="toolbar-group">
               <button type="button" className="icon-button" aria-label="Zoom out" disabled={zoom <= zoomSteps[0]} onClick={() => setZoom(z => zoomSteps[Math.max(0, zoomSteps.indexOf(z) - 1)])}><Minus size={15} /></button>
@@ -480,6 +483,13 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         </aside>
       </div>
 
+      {resizing && (
+        <MapSizeDialog plan={plan} onClose={() => setResizing(false)} onApply={(cols, rows, anchor, fill) => {
+          commit(p => resizePlan(p, cols, rows, anchor, fill));
+          setResizing(false);
+          notify(`Map resized to ${cols} × ${rows}`);
+        }} />
+      )}
       {shortcuts && (
         <div className="dialog-backdrop" onClick={() => setShortcuts(false)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" onClick={e => e.stopPropagation()}>

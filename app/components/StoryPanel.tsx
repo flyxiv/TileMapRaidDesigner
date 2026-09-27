@@ -1,5 +1,5 @@
 'use client';
-import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, MessageSquare, PanelTop, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { createLine, createOption, isUnit, phaseTurnRanges, unitCategories, unitTypes, type DialogueLine, type DialogueOption, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
@@ -77,6 +77,11 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
             <input aria-label="Custom speaker name" className="story-custom" value={l.speaker} maxLength={60} placeholder="Speaker name (not on the map)"
               onChange={e => patchLine(l.id, { speaker: e.target.value }, `speaker-${l.id}`)} />
           )}
+          <div className="placement" role="group" aria-label="Show on map">
+            <span>Show</span>
+            <button type="button" aria-pressed={(l.placement ?? 'unit') === 'unit'} onClick={() => patchLine(l.id, { placement: 'unit' })}><MessageSquare size={12} /> On speaker</button>
+            <button type="button" aria-pressed={l.placement === 'top'} onClick={() => patchLine(l.id, { placement: 'top' })}><PanelTop size={12} /> Top banner</button>
+          </div>
           <textarea aria-label="Line" rows={2} value={l.text} maxLength={2000} placeholder="What do they say?" onChange={e => patchLine(l.id, { text: e.target.value }, `text-${l.id}`)} />
           {l.options.map((o, oi) => (
             <div key={o.id} className="story-option">

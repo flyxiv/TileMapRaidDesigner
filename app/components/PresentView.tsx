@@ -49,7 +49,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
 
   const current = phase.dialogue[line];
   const speech = current ? {
-    speaker: current.speaker, text: current.text, options: current.options.map(o => o.text),
+    speaker: current.speaker, text: current.text, options: current.options.map(o => o.text), placement: current.placement,
     turnLabel: `TURN ${ranges[index].start + Math.min(current.turn, phase.turns) - 1}`,
     picked: current.options.findIndex(o => o.id === chosen[current.id]),
   } : null;
