@@ -384,3 +384,4 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .script-action:not(.active) { opacity: .62; }
 .script-action.active { background: #1f1d2c; border-style: solid; }
 .map-viewport.picking .battlemap { cursor: crosshair; }
+.scene-note { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; background: #1f1d2c; border: 1px solid #3d3858; color: #c6b3ff; font-size: 11px; font-weight: 600; pointer-events: none; white-space: nowrap; }

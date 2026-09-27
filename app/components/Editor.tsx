@@ -214,6 +214,8 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           break;
         }
         setSelectedId(hit?.id ?? null);
+        // A unit shown where a story action put it keeps its starting position; edit that from the Details tab.
+        if (hit && displaced(hit.id)) { notify('This unit is shown where the story moved it. Open Details to edit its starting position.'); break; }
         if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { base: presentRef.current, mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
         break;
       }
@@ -357,11 +359,17 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     turnLabel: [active.conversation.title, triggerLabel(active.conversation.trigger, phase)].filter(Boolean).join(' · ').toUpperCase(),
   } : null;
   const acting = panel === 'story' && active && isAction(active.step) ? active.step : null;
+  // In the Story tab the map shows the scene at the selected step: units where earlier actions moved and turned them,
+  // so a line spoken after a turn appears over the unit facing its new way.
+  const scene = panel === 'story' && active ? stagePhase(phase, plan, script.slice(0, activeIndex).map(s => s.step).filter(isAction)) : phase;
+  const staged = scene !== phase;
+  const mapPlan = staged ? { ...plan, phases: plan.phases.map((p, i) => i === pi ? scene : p) } : plan;
+  /** Units standing somewhere other than their starting position because of earlier actions. */
+  const displaced = (id: string) => { const a = scene.entities.find(e => e.id === id), b = phase.entities.find(e => e.id === id); return !!a && !!b && (a.x !== b.x || a.y !== b.y || a.rotation !== b.rotation); };
   const stage = (() => {
     if (!acting) return null;
-    const before = stagePhase(phase, plan, script.slice(0, activeIndex).map(s => s.step).filter(isAction));
-    const from = before.entities.find(e => e.id === acting.actor);
-    return from ? { step: acting, from, text: actionText(acting, phase), rotation: faceRotation(acting, before.entities) } : null;
+    const from = scene.entities.find(e => e.id === acting.actor);
+    return from ? { step: acting, from, text: actionText(acting, phase), rotation: faceRotation(acting, scene.entities) } : null;
   })();
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
 
@@ -478,12 +486,13 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           <div ref={viewportRef} className={`map-viewport tool-${tool.type}${picking ? ' picking' : ''}`}>
             <div className="map-scroll">
               <BattleMap
-                ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={selectedId}
+                ref={mapRef} className="battlemap" plan={mapPlan} phaseIndex={pi} cell={cell} selectedId={selectedId}
                 showMoves={layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
-                highlight={highlight} speech={speech} stage={stage} transform={tool.type === 'select'} onPointer={onPointer} onLeave={() => setHover(null)}
+                highlight={highlight} speech={speech} stage={stage} transform={tool.type === 'select' && !(selectedId && displaced(selectedId))} onPointer={onPointer} onLeave={() => setHover(null)}
                 onDragTile={t => dragItem && setHover(t)} onDropTile={t => { if (dragItem) spawn(dragItem, t); setDragItem(null); }}
               />
             </div>
+            {staged && <div className="scene-note">Scene at the selected story step: earlier actions are applied. Starting positions are on the Details tab.</div>}
             <div className="map-legend">
               <span><i className="party" />Characters</span><span><i className="enemy" />Enemies</span><span><i className="neutral" />Neutral</span>
               <span><i className="tele" />Telegraph</span>
