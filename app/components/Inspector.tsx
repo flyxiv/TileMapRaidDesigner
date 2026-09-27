@@ -1,10 +1,10 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
 import { EventIcon } from './EventIcon';
-import { Glyph } from './glyphs';
+import { Glyph, MarkerIcon } from './glyphs';
 
 type Props = {
   plan: Plan;
@@ -106,6 +106,15 @@ function UnitFields({ plan, phase, prevPhase, u, onChange }: { plan: Plan; phase
       <span className="field-line">Facing <b>{facingLabel(u.rotation)}</b></span>
       <input type="range" min={0} max={315} step={45} value={u.rotation - (u.rotation % 45)} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${u.id}`)} />
     </label>
+    <div className="field">
+      <span className="field-line">Marker <b>{u.marker ? markerTypes[u.marker].name : 'None'}</b></span>
+      <div className="marker-picker" role="group" aria-label="Marker">
+        <button type="button" aria-pressed={!u.marker} className={!u.marker ? 'active' : ''} onClick={() => onChange({ marker: undefined })}>None</button>
+        {(Object.keys(markerTypes) as MarkerKind[]).map(k => (
+          <button key={k} type="button" aria-label={markerTypes[k].name} aria-pressed={u.marker === k} className={u.marker === k ? 'active' : ''} onClick={() => onChange({ marker: k })}><MarkerIcon kind={k} size={16} /></button>
+        ))}
+      </div>
+    </div>
     {moved && <div className="move-note"><span>Moves this phase</span><b>{tileLabel(before.x, before.y)} → {tileLabel(u.x, u.y)}</b></div>}
     {phase.entities.some(e => e.anchor === u.id) && <p className="hint">Telegraphs attached to this unit move with it.</p>}
   </>;

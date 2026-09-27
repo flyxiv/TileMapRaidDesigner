@@ -58,6 +58,8 @@ export type Entity = {
   infinite?: boolean;
   /** Telegraphs only, optional: seconds from the telegraph appearing to it going off. */
   castTime?: number;
+  /** Units only, optional: a head marker shown on the unit. */
+  marker?: MarkerKind;
   /** Telegraphs only, optional: the units it targets (by id). */
   targets?: string[];
   /** Units only: tiles per side, overriding the type's usual size. */
@@ -138,6 +140,14 @@ export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
 export const isMechanic = (kind: Kind): kind is MechanicKind => kind in mechanicTypes;
 export const MAX_UNIT_SIZE = 5;
 export const MAX_RADIUS = 40;
+/** Head markers that can be put on a unit. */
+export const markerTypes = {
+  star: { name: 'Star', color: '#f3d15a' }, circle: { name: 'Circle', color: '#f0a35e' }, diamond: { name: 'Diamond', color: '#c78bf0' },
+  triangle: { name: 'Triangle', color: '#8fd67a' }, moon: { name: 'Moon', color: '#c9d4e0' }, square: { name: 'Square', color: '#7fb2f0' },
+  cross: { name: 'Cross', color: '#f07a6e' }, skull: { name: 'Skull', color: '#eef1ef' },
+  one: { name: '1', color: '#6fd6c8' }, two: { name: '2', color: '#6fd6c8' }, three: { name: '3', color: '#6fd6c8' }, four: { name: '4', color: '#6fd6c8' },
+};
+export type MarkerKind = keyof typeof markerTypes;
 /** "2.5s" style cast time, or '' when a telegraph has none. */
 export const castLabel = (m: Pick<Entity, 'castTime'>) => m.castTime === undefined ? '' : `${Number(m.castTime.toFixed(1))}s`;
 /** How far a telegraph reaches, in tiles: its radius, or effectively unlimited when infinite. */
@@ -503,7 +513,7 @@ export function validatePlan(value: unknown): value is Plan {
       (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
-      num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
+      num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.marker === undefined || Object.hasOwn(markerTypes, e.marker)) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
       (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&

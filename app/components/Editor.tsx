@@ -4,19 +4,19 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, markerTypes, type MarkerKind, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
-import { Glyph, Logo } from './glyphs';
+import { Glyph, Logo, MarkerIcon } from './glyphs';
 import { Inspector } from './Inspector';
 import { PresentView } from './PresentView';
 import { MapSizeDialog } from './MapSizeDialog';
 import { MechanicPages } from './MechanicPages';
 import { SaveToPageMenu, StoryPanel } from './StoryPanel';
 
-type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
+type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind } | { type: 'marker'; marker: MarkerKind };
 type History = { past: Plan[]; present: Plan; future: Plan[] };
 type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize'; id?: string; offset?: [number, number]; corner?: TransformHandle };
 /**
@@ -337,8 +337,17 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     if (tile && dragItem.type === 'terrain' && !mechOf(t)) { setActiveTarget(t); commit(pl => paintOn(pl, t, brushTiles(...tile), dragItem.terrain), `drag-paint-${t}`); }
   };
   const dropOn = (tile: [number, number], t: Target) => {
-    if (dragItem && dragItem.type !== 'terrain') spawn(dragItem, tile, undefined, t);
+    if (dragItem?.type === 'marker') markUnit(tile, t, dragItem.marker);
+    else if (dragItem && dragItem.type !== 'terrain') spawn(dragItem, tile, undefined, t);
     setDragItem(null);
+  };
+  /** Puts a head marker on the unit at a tile (on that map's own units). */
+  const markUnit = (tile: [number, number], t: Target, marker: MarkerKind) => {
+    if (mechOf(t)) { notify('Mark units on the starting map or a conversation map'); return; }
+    const unit = entityAt({ ...phaseFor(t), entities: phaseFor(t).entities.filter(e => isUnit(e.kind)) }, ...tile);
+    if (!unit) { notify('Drop a marker onto a unit'); return; }
+    patchEntity(unit.id, { marker }, undefined, t);
+    setActiveTarget(t); setSelectedId(unit.id);
   };
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
   const addPhase = () => {
@@ -416,8 +425,6 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   if (presenting) return <PresentView plan={plan} index={pi} onIndex={setPhaseIndex} onExit={() => setPresenting(false)} />;
 
-  const toolLabel = tool.type === 'select' ? 'Select' : tool.type === 'erase' ? 'Erase'
-    : tool.type === 'terrain' ? `Paint ${terrainTypes[tool.terrain].name}` : tool.type === 'unit' ? `Place ${unitTypes[tool.kind].name}` : `Draw ${mechanicTypes[tool.kind].name}`;
   const placing = dragItem ?? tool;
   const highlight = hover && placing.type === 'terrain' ? (() => { const o = Math.floor((brush - 1) / 2); return { x: hover[0] - o, y: hover[1] - o, size: brush }; })()
     : hover && (placing.type === 'unit' || placing.type === 'mechanic') ? { x: Math.min(hover[0], plan.cols - footprint(placing)), y: Math.min(hover[1], plan.rows - footprint(placing)), size: footprint(placing) } : null;
@@ -551,6 +558,17 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                   </div>
                 </div>
               ))}
+            </section>
+            <section>
+              <div className="section-title">Markers <span>Drag onto a unit</span></div>
+              <div className="grid-4">
+                {(Object.keys(markerTypes) as MarkerKind[]).map(k => (
+                  <button key={k} type="button" className="tool-tile marker-tile" title={`Drag onto a unit to mark it with ${markerTypes[k].name}`} aria-label={`Marker: ${markerTypes[k].name}`}
+                    onClick={() => notify('Drag it onto a unit to mark it')} {...dragProps({ type: 'marker', marker: k })}>
+                    <MarkerIcon kind={k} size={20} />
+                  </button>
+                ))}
+              </div>
             </section>
             <section>
               <div className="section-title">Mechanics <span>Drag or place · M</span></div>

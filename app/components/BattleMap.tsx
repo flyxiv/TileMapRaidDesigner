@@ -1,7 +1,7 @@
 'use client';
 import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
-import { glyphs } from './glyphs';
+import { MarkerShape, glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
 /**
@@ -286,6 +286,15 @@ function UnitToken({ u, C }: { u: Entity; C: number }) {
         </svg>
         <path d={`M${cx} ${cy - r + 2.5} L${cx + notch} ${cy - r + 2.5 + notch} L${cx - notch} ${cy - r + 2.5 + notch} Z`} fill={type.color} />
       </g>}
+      {u.marker && !tiny && (() => {
+        const m = Math.max(12, Math.min(22, C * 0.62));
+        return (
+          <g pointerEvents="none">
+            <circle cx={cx + r - 1} cy={cy - r + 1} r={m / 2 + 2} fill="#0f1314" />
+            <svg x={cx + r - 1 - m / 2} y={cy - r + 1 - m / 2} width={m} height={m} viewBox="0 0 24 24"><MarkerShape kind={u.marker} /></svg>
+          </g>
+        );
+      })()}
       {!big && C >= 28 && u.code && (
         <g transform={`translate(${cx} ${cy + r - 1})`}>
           <rect x={-(u.code.length * 3 + 5)} y={-5} width={u.code.length * 6 + 10} height={11} rx="3" fill="#0f1314" stroke={type.color} />
