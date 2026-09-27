@@ -465,12 +465,12 @@ function LineCard({ plan, phase, phaseIndex, line: l, index, count, active, onAc
           onChange={e => { const v = e.target.value; setCustomPicked(v === '__custom'); if (v !== '__custom') patch({ speaker: v }); }}>
           {groups.map(g => (
             <optgroup key={g.cat} label={unitCategories[g.cat].name}>
-              {g.names.map(n => <option key={n} value={n}>{n}</option>)}
+              {g.names.map(n => <option key={n} value={n} style={{ color: speakerColor(phase, n) }}>{n}</option>)}
             </optgroup>
           ))}
           <optgroup label="Other">
-            <option value="Narrator">Narrator</option>
-            <option value="__custom">Custom name…</option>
+            <option value="Narrator" style={{ color: speakerColor(phase, 'Narrator') }}>Narrator</option>
+            <option value="__custom" style={{ color: speakerColor(phase, '') }}>Custom name…</option>
           </optgroup>
         </select>
       </div>
