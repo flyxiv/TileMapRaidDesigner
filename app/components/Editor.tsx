@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  clampEntity, createMechanic, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  clampEntity, createMechanic, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -71,6 +71,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [menu, setMenu] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   const [panel, setPanel] = useState<'details' | 'story'>('details');
+  const [activeLineId, setActiveLineId] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const lastEdit = useRef<{ key: string; at: number } | null>(null);
   const presentRef = useRef(hist.present);
@@ -272,6 +273,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     : hover && (tool.type === 'unit' || tool.type === 'mechanic') ? { x: Math.min(hover[0], plan.cols - footprint(tool)), y: Math.min(hover[1], plan.rows - footprint(tool)), size: footprint(tool) } : null;
   const units = phase.entities.filter(e => isUnit(e.kind));
   const moveCount = prevPhase ? units.filter(u => { const b = prevPhase.entities.find(e => e.id === u.id); return b && (b.x !== u.x || b.y !== u.y); }).length : 0;
+  // While the Story tab is open, the line being edited shows as a bubble over its speaker.
+  const activeLine = phase.dialogue.find(l => l.id === activeLineId) ?? phase.dialogue[0];
+  const speech = panel === 'story' && activeLine ? {
+    speaker: activeLine.speaker, text: activeLine.text, options: activeLine.options.map(o => o.text),
+    turnLabel: `T${ranges[pi].start + Math.min(activeLine.turn, phase.turns) - 1}`,
+  } : null;
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
 
   return (
@@ -333,8 +340,8 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <div className="section-title">Mechanics <span>Draw · M</span></div>
               <div className="grid-3">
                 {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => (
-                  <button key={k} type="button" className={`tool-tile tall${isTool({ type: 'mechanic', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'mechanic', kind: k })} onClick={() => setTool({ type: 'mechanic', kind: k })}>
-                    <Glyph kind={k} size={22} color={k === 'marker' ? '#c6eb95' : '#dbb36d'} strokeWidth={1.8} />{mechanicTypes[k].name}
+                  <button key={k} type="button" className={`tool-tile tall${isTool({ type: 'mechanic', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'mechanic', kind: k })} title={mechanicTypes[k].description} onClick={() => setTool({ type: 'mechanic', kind: k })}>
+                    <Glyph kind={k} size={22} color={mechanicTone({ kind: k, turns: 2 })} strokeWidth={1.8} />{mechanicTypes[k].name}
                   </button>
                 ))}
               </div>
@@ -390,7 +397,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <BattleMap
                 ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={selectedId}
                 showMoves={layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
-                highlight={highlight} onPointer={onPointer} onLeave={() => setHover(null)}
+                highlight={highlight} speech={speech} onPointer={onPointer} onLeave={() => setHover(null)}
               />
             </div>
             <div className="map-legend">
@@ -436,7 +443,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           {panel === 'story' ? (
             <div id="panel-story" role="tabpanel" aria-labelledby="tab-story">
               <StoryPanel
-                plan={plan} phaseIndex={pi}
+                plan={plan} phaseIndex={pi} activeLineId={activeLine?.id ?? null} onActivate={setActiveLineId}
                 defaultSpeaker={(selected && isUnit(selected.kind) ? selected : phase.entities.find(e => e.kind === 'boss'))?.name ?? 'Narrator'}
                 onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, dialogue: fn(f.dialogue) })), key)}
               />

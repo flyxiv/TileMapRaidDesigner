@@ -2,6 +2,7 @@
 import { forwardRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { center, colLabel, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { glyphs } from './glyphs';
+import { SpeechBubble, type Speech } from './SpeechBubble';
 
 export type MapPointer = { type: 'down' | 'move' | 'up'; tile: [number, number] | null; entityId?: string; event: ReactPointerEvent<SVGSVGElement> };
 
@@ -15,6 +16,8 @@ type Props = {
   showTelegraphs?: boolean;
   selectedId?: string | null;
   highlight?: { x: number; y: number; size: number } | null;
+  /** Dialogue line to show as a bubble over its speaker. */
+  speech?: Speech | null;
   onPointer?: (p: MapPointer) => void;
   onLeave?: () => void;
   className?: string;
@@ -25,7 +28,7 @@ const terrainFill: Record<string, string> = {
 };
 
 export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
-  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, onPointer, onLeave, className }, ref,
+  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, onPointer, onLeave, className }, ref,
 ) {
   const phase = plan.phases[phaseIndex];
   const prev = phaseIndex > 0 ? plan.phases[phaseIndex - 1] : null;
@@ -65,7 +68,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
       ref={ref} className={className} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img"
       aria-label={`${plan.name}, phase ${phaseIndex + 1}: ${phase.name}`}
       onPointerDown={handle('down')} onPointerMove={handle('move')} onPointerUp={handle('up')} onPointerLeave={onLeave}
-      fontFamily="'DM Sans', system-ui, sans-serif"
+      fontFamily="'DM Sans', system-ui, sans-serif" overflow="visible"
     >
       <defs>
         <pattern id="rd-water" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
@@ -74,6 +77,9 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
         <radialGradient id="rd-lava"><stop offset="0" stopColor="#c0643f" /><stop offset="0.75" stopColor="#8f4936" /></radialGradient>
         <pattern id="rd-tele" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <rect width="7" height="7" fill="rgba(219,179,109,0.14)" /><rect width="3" height="7" fill="rgba(219,179,109,0.38)" />
+        </pattern>
+        <pattern id="rd-share" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="7" height="7" fill="rgba(198,235,149,0.12)" /><rect width="3" height="7" fill="rgba(198,235,149,0.3)" />
         </pattern>
         <pattern id="rd-hot" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <rect width="7" height="7" fill="rgba(236,140,96,0.28)" /><rect width="3" height="7" fill="rgba(236,140,96,0.58)" />
@@ -106,9 +112,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
 
         {showTelegraphs && hazards.map(({ m, tiles }) => (
           <g key={m.id} data-entity={m.id} opacity={selectedId && selectedId !== m.id ? 0.8 : 1}>
-            {tiles.map(([x, y]) => m.kind === 'marker'
-              ? <rect key={`${x},${y}`} x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(198,235,149,0.2)" stroke="rgba(198,235,149,0.35)" />
-              : <rect key={`${x},${y}`} x={x * C} y={y * C} width={C} height={C} fill={m.turns === 1 ? 'url(#rd-hot)' : 'url(#rd-tele)'} />)}
+            {tiles.map(([x, y, strength]) => <HazardTile key={`${x},${y}`} m={m} x={x} y={y} strength={strength} C={C} />)}
             <MechanicOutline m={m} entities={phase.entities} C={C} selected={selectedId === m.id} />
           </g>
         ))}
@@ -127,51 +131,99 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
         )}
 
         {/* Labels sit under the tokens and stay translucent so they never hide a unit. */}
-        {showTelegraphs && C >= 22 && mechanics.map(m => <MechanicChip key={m.id} m={m} entities={phase.entities} C={C} selected={selectedId === m.id} />)}
+        {showTelegraphs && C >= 22 && mechanics.map(m => <MechanicChip key={m.id} m={m} plan={plan} entities={phase.entities} C={C} selected={selectedId === m.id} />)}
 
         {units.map(u => <UnitToken key={u.id} u={u} C={C} selected={selectedId === u.id} />)}
+
+        {speech && <SpeechBubble speech={speech} units={units} C={C} mapWidth={plan.cols * C} gutter={G} />}
 
       </g>
     </svg>
   );
 });
 
+function HazardTile({ m, x, y, strength, C }: { m: Entity; x: number; y: number; strength: number; C: number }) {
+  if (m.kind === 'marker') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(198,235,149,0.2)" stroke="rgba(198,235,149,0.35)" />;
+  if (m.kind === 'tower') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(134,197,242,0.22)" stroke="rgba(134,197,242,0.4)" />;
+  const fill = m.kind === 'stack' ? 'url(#rd-share)' : m.turns === 1 ? 'url(#rd-hot)' : 'url(#rd-tele)';
+  return <rect x={x * C} y={y * C} width={C} height={C} fill={fill} opacity={m.kind === 'armageddon' ? 0.75 : strength} />;
+}
+
+/** Arrow from (x1, y1) toward (x2, y2) with a filled head at the far end. */
+function arrow(x1: number, y1: number, x2: number, y2: number, head: number) {
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+  const bx = x2 - ux * head, by = y2 - uy * head;
+  return { line: `M${x1} ${y1} L${bx} ${by}`, head: `M${x2} ${y2} L${bx - uy * head * 0.6} ${by + ux * head * 0.6} L${bx + uy * head * 0.6} ${by - ux * head * 0.6} Z` };
+}
+
+function Arrows({ cx, cy, from, to, count, tone, head }: { cx: number; cy: number; from: number; to: number; count: number; tone: string; head: number }) {
+  const arrows = Array.from({ length: count }, (_, i) => {
+    const t = (i / count) * Math.PI * 2 + Math.PI / count, sx = Math.sin(t), sy = -Math.cos(t);
+    return arrow(cx + sx * from, cy + sy * from, cx + sx * to, cy + sy * to, head);
+  });
+  return <g pointerEvents="none">
+    {arrows.map((a, i) => <g key={i}><path d={a.line} stroke={tone} strokeWidth="1.6" strokeLinecap="round" /><path d={a.head} fill={tone} /></g>)}
+  </g>;
+}
+
 function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: Entity[]; C: number; selected: boolean }) {
   const { point: [ox, oy], anchor } = mechanicOrigin(m, entities);
-  const cx = ox * C, cy = oy * C, tone = mechanicTone(m), width = selected ? 2.4 : 1.5;
-  let shape;
-  if (m.kind === 'circle') {
-    shape = <circle cx={cx} cy={cy} r={m.radius * C} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
-  } else if (m.kind === 'cone') {
-    const R = (m.radius + 0.3) * C, a = (m.rotation * Math.PI) / 180, h = Math.PI / 4;
-    const p = (t: number) => `${cx + R * Math.sin(t)} ${cy - R * Math.cos(t)}`;
-    shape = <path d={`M${cx} ${cy} L${p(a - h)} A${R} ${R} 0 0 1 ${p(a + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
-  } else {
-    const k = C * 0.55;
-    shape = <path d={`M${cx} ${cy - k} L${cx + k} ${cy} L${cx} ${cy + k} L${cx - k} ${cy} Z`} fill="none" stroke={tone} strokeWidth={width} />;
+  const cx = ox * C, cy = oy * C, R = m.radius * C, tone = mechanicTone(m), width = selected ? 2.4 : 1.5;
+  const a = (m.rotation * Math.PI) / 180, head = Math.max(4, C * 0.18);
+  const ring = (r: number, dashed = true, opacity = 1) => <circle cx={cx} cy={cy} r={r} fill="none" stroke={tone} strokeWidth={width} strokeOpacity={opacity} strokeDasharray={dashed ? '5 4' : undefined} />;
+  let shape = null;
+  switch (m.kind) {
+    case 'circle': shape = ring(R); break;
+    case 'flare': shape = <>{ring(R, true, 0.5)}{ring(R * 0.66, true, 0.75)}{ring(R * 0.33)}</>; break;
+    case 'spread': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={R + 3} to={R + C * 0.7} count={4} tone={tone} head={head} /></>; break;
+    case 'stack': shape = <>{ring(R, false)}<Arrows cx={cx} cy={cy} from={R + C * 0.7} to={R + 3} count={4} tone={tone} head={head} /></>; break;
+    case 'tower': shape = <>{ring(R, false)}{ring(Math.max(3, R - C * 0.18), false, 0.6)}</>; break;
+    case 'knockback': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={C * 0.45} to={C * 0.45 + (m.push ?? 2) * C} count={8} tone={tone} head={head} /></>; break;
+    case 'donut': shape = <>{ring(R)}<circle cx={cx} cy={cy} r={(m.inner ?? 1) * C} fill="none" stroke={tones.safe} strokeWidth={width} /></>; break;
+    case 'cone': {
+      const R2 = (m.radius + 0.3) * C, h = Math.PI / 4;
+      const p = (t: number) => `${cx + R2 * Math.sin(t)} ${cy - R2 * Math.cos(t)}`;
+      shape = <path d={`M${cx} ${cy} L${p(a - h)} A${R2} ${R2} 0 0 1 ${p(a + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
+      break;
+    }
+    case 'line': {
+      const dx = Math.sin(a), dy = -Math.cos(a), hw = ((m.width ?? 1) / 2) * C, L = (m.radius + 0.3) * C;
+      const pt = (along: number, across: number) => `${cx + dx * along - dy * across} ${cy + dy * along + dx * across}`;
+      shape = <path d={`M${pt(0, -hw)} L${pt(L, -hw)} L${pt(L, hw)} L${pt(0, hw)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
+      break;
+    }
+    case 'marker': {
+      const k = C * 0.55;
+      shape = <path d={`M${cx} ${cy - k} L${cx + k} ${cy} L${cx} ${cy + k} L${cx - k} ${cy} Z`} fill="none" stroke={tone} strokeWidth={width} />;
+      break;
+    }
   }
   return <>
     {shape}
-    {!anchor && m.kind !== 'marker' && <circle cx={cx} cy={cy} r={Math.max(3, C * 0.12)} fill={tone} stroke="#141819" strokeWidth="1.5" style={{ cursor: 'grab' }} />}
+    {!anchor && m.kind !== 'marker' && m.kind !== 'armageddon' && <circle cx={cx} cy={cy} r={Math.max(3, C * 0.12)} fill={tone} stroke="#141819" strokeWidth="1.5" style={{ cursor: 'grab' }} />}
   </>;
 }
 
-function MechanicChip({ m, entities, C, selected }: { m: Entity; entities: Entity[]; C: number; selected: boolean }) {
-  const { point: [ox, oy] } = mechanicOrigin(m, entities);
+function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Plan; entities: Entity[]; C: number; selected: boolean }) {
+  const { point: [ox, oy], anchor } = mechanicOrigin(m, entities);
   const a = (m.rotation * Math.PI) / 180;
-  const x = (m.kind === 'cone' ? ox + Math.sin(a) * m.radius * 0.88 : ox) * C;
-  const y = (m.kind === 'cone' ? oy - Math.cos(a) * m.radius * 0.88 : m.kind === 'marker' ? oy + 1.25 : oy) * C;
+  let [x, y] = [ox, oy];
+  if (m.kind === 'cone' || m.kind === 'line') [x, y] = [ox + Math.sin(a) * m.radius * (m.kind === 'cone' ? 0.88 : 0.55), oy - Math.cos(a) * m.radius * (m.kind === 'cone' ? 0.88 : 0.55)];
+  else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
+  else if (m.kind === 'marker') y = oy + 1.25;
+  else if (anchor) y = oy + Math.min(m.radius, 1.6) + 0.35; // keep the label off the targeted unit
   const tone = mechanicTone(m), badge = m.kind !== 'marker' && m.turns > 0;
-  const w = m.name.length * 5.9 + (badge ? 30 : 16), h = 22;
+  const label = m.kind === 'tower' ? `${m.name} ×${m.soak ?? 1}` : m.name;
+  const w = label.length * 5.9 + (badge ? 30 : 16), h = 22;
   return (
-    <g data-entity={m.id} className={`mech-label${selected ? ' selected' : ''}`} transform={`translate(${x - w / 2} ${y - h / 2})`}>
+    <g data-entity={m.id} className={`mech-label${selected ? ' selected' : ''}`} transform={`translate(${x * C - w / 2} ${y * C - h / 2})`}>
       <title>{m.kind === 'marker' ? m.name : `${m.name}: ${m.turns === 0 ? 'lasts the phase' : `resolves in ${m.turns} turn${m.turns > 1 ? 's' : ''}`}`}</title>
       <rect width={w} height={h} rx={h / 2} fill="rgba(15,19,20,0.75)" stroke={tone} />
       {badge && <>
         <circle cx={h / 2} cy={h / 2} r={8} fill={tone} />
         <text x={h / 2} y={h / 2 + 0.5} textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight="700" fill="#141819">{m.turns}</text>
       </>}
-      <text x={badge ? 25 : 8} y={h / 2 + 0.5} dominantBaseline="central" fontSize="10" fontWeight="600" fill={tone}>{m.name}</text>
+      <text x={badge ? 25 : 8} y={h / 2 + 0.5} dominantBaseline="central" fontSize="10" fontWeight="600" fill={tone}>{label}</text>
     </g>
   );
 }

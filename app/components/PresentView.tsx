@@ -1,7 +1,7 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { isMechanic, mechanicTone, phaseTurnRanges, turnRangeText, type Plan } from '../plan';
+import { isMechanic, mechanicTone, mechanicTypes, type MechanicKind, phaseTurnRanges, turnRangeText, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { speakerColor } from './StoryPanel';
 
@@ -16,6 +16,9 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   const stage = useRef<HTMLElement>(null);
   const [cell, setCell] = useState(36);
   const [chosen, setChosen] = useState<Record<string, string>>({});
+  // The dialogue line on screen; it starts at the first line whenever the phase changes some other way.
+  const [cursor, setCursor] = useState({ phase: index, line: 0 });
+  const line = cursor.phase === index ? Math.min(cursor.line, Math.max(0, phase.dialogue.length - 1)) : 0;
 
   useLayoutEffect(() => {
     const el = stage.current;
@@ -30,12 +33,26 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onExit();
-      else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); onIndex(Math.min(plan.phases.length - 1, index + 1)); }
-      else if (e.key === 'ArrowLeft') onIndex(Math.max(0, index - 1));
+      // Arrow keys step through the phase's dialogue first, then move between phases.
+      else if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        if (line < phase.dialogue.length - 1) setCursor({ phase: index, line: line + 1 });
+        else onIndex(Math.min(plan.phases.length - 1, index + 1));
+      } else if (e.key === 'ArrowLeft') {
+        if (line > 0) setCursor({ phase: index, line: line - 1 });
+        else if (index > 0) { setCursor({ phase: index - 1, line: plan.phases[index - 1].dialogue.length - 1 }); onIndex(index - 1); }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, onExit, onIndex, plan.phases.length]);
+  }, [index, line, phase.dialogue.length, onExit, onIndex, plan.phases]);
+
+  const current = phase.dialogue[line];
+  const speech = current ? {
+    speaker: current.speaker, text: current.text, options: current.options.map(o => o.text),
+    turnLabel: `T${ranges[index].start + Math.min(current.turn, phase.turns) - 1}`,
+    picked: current.options.findIndex(o => o.id === chosen[current.id]),
+  } : null;
 
   const mechanics = phase.entities.filter(e => isMechanic(e.kind));
   return (
@@ -43,7 +60,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
       <header className="present-top">
         <button type="button" className="link-button" onClick={onExit}><ChevronLeft size={15} /> Back to editor</button>
         <div className="present-title">{plan.name}</div>
-        <div className="present-live"><i /> Presenting · Esc to exit</div>
+        <div className="present-live"><i /> Presenting · → next line · Esc to exit</div>
       </header>
       <div className="present-body">
         <section className="present-story">
@@ -55,11 +72,11 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
           {phase.dialogue.length > 0 && (
             <div className="present-story-script">
               <div className="section-title">Story</div>
-              {phase.dialogue.map(l => {
+              {phase.dialogue.map((l, li) => {
                 const pick = l.options.find(o => o.id === chosen[l.id]);
                 const target = pick?.goto ? plan.phases.findIndex(p => p.id === pick.goto) : -1;
                 return (
-                  <div key={l.id} className="script-line" style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
+                  <div key={l.id} className={`script-line${li === line ? ' active' : ''}`} onClick={() => setCursor({ phase: index, line: li })} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
                     <div className="script-meta"><span className="script-turn">T{ranges[index].start + Math.min(l.turn, phase.turns) - 1}</span><b>{l.speaker || 'Narrator'}</b></div>
                     {l.text && <p>{l.text}</p>}
                     {l.options.length > 0 && (
@@ -89,14 +106,14 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
               {mechanics.map(m => (
                 <div key={m.id} className="watch-row">
                   <span className="watch-badge" style={{ background: mechanicTone(m) }}>{m.kind !== 'marker' && m.turns > 0 ? m.turns : ''}</span>
-                  <span><b>{m.name}</b><small>{m.kind === 'marker' ? 'Safe tiles for this phase' : m.turns === 0 ? 'Active for the whole phase' : m.turns === 1 ? 'Resolves next turn' : `Resolves in ${m.turns} turns`}</small></span>
+                  <span><b>{m.name}</b><small>{mechanicTypes[m.kind as MechanicKind].name} · {m.kind === 'marker' ? 'Safe tiles for this phase' : m.turns === 0 ? 'Active for the whole phase' : m.turns === 1 ? 'Resolves next turn' : `Resolves in ${m.turns} turns`}</small></span>
                 </div>
               ))}
             </div>
           )}
         </section>
         <section className="present-stage" ref={stage} aria-label="Battle map">
-          <BattleMap plan={plan} phaseIndex={index} cell={cell} />
+          <BattleMap plan={plan} phaseIndex={index} cell={cell} speech={speech} />
         </section>
       </div>
       <footer className="present-controls">

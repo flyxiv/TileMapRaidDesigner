@@ -24,18 +24,35 @@ export const unitTypes: Record<'tank' | 'healer' | 'dps' | 'boss' | 'miniboss' |
 };
 export const unitsIn = (category: UnitCategory) => (Object.keys(unitTypes) as UnitKind[]).filter(k => unitTypes[k].category === category);
 export const mechanicTypes = {
-  circle: { name: 'Circle', description: 'Area damage' },
+  circle: { name: 'Circle', description: 'Area damage around a point' },
   cone: { name: 'Cone', description: 'Frontal area damage' },
+  line: { name: 'Line', description: 'Charge or beam in a straight line' },
+  donut: { name: 'Donut', description: 'Safe inside, damage in the ring' },
+  flare: { name: 'Flare', description: 'Proximity damage that falls off with distance' },
+  stack: { name: 'Stack', description: 'Shared damage: stand together' },
+  spread: { name: 'Spread', description: 'Personal damage: stand apart' },
+  tower: { name: 'Tower', description: 'Must be soaked by players standing in it' },
+  knockback: { name: 'Knockback', description: 'Pushes units away from the origin' },
+  armageddon: { name: 'Armageddon', description: 'Arena-wide damage outside safe zones' },
   marker: { name: 'Marker', description: 'Safe zone' },
 };
-export const tones = { telegraph: '#dbb36d', imminent: '#ec8c60', safe: '#c6eb95' };
+export const tones = { telegraph: '#dbb36d', imminent: '#ec8c60', safe: '#c6eb95', soak: '#86c5f2' };
+/** Which settings a mechanic kind uses. */
+export const mechanicFields = (kind: Kind) => ({
+  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line', inner: kind === 'donut',
+  width: kind === 'line', push: kind === 'knockback', soak: kind === 'tower', origin: kind !== 'armageddon',
+});
 
 export type Terrain = keyof typeof terrainTypes;
 export type UnitKind = keyof typeof unitTypes;
 export type MechanicKind = keyof typeof mechanicTypes;
 export type Kind = UnitKind | MechanicKind;
 /** Units occupy tiles; mechanics are telegraphs. `turns` is the countdown until a mechanic resolves (0 = lasts the whole phase). */
-export type Entity = { id: string; kind: Kind; name: string; code: string; x: number; y: number; radius: number; rotation: number; turns: number; anchor?: string };
+export type Entity = {
+  id: string; kind: Kind; name: string; code: string; x: number; y: number; radius: number; rotation: number; turns: number; anchor?: string;
+  /** Donut safe radius, line width, knockback distance and tower soak count, for the mechanics that use them. */
+  inner?: number; width?: number; push?: number; soak?: number;
+};
 /** A choice offered on a dialogue line. `goto` names the phase the fight jumps to when it is picked. */
 export type DialogueOption = { id: string; text: string; outcome: string; goto?: string };
 /** A line of mid-fight dialogue, spoken on a turn counted from the start of its phase (1 = first turn). */
@@ -51,8 +68,9 @@ export const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).s
 export const colLabel = (i: number) => i < 26 ? String.fromCharCode(65 + i) : 'A' + String.fromCharCode(65 + i - 26);
 export const tileLabel = (x: number, y: number) => `${colLabel(x)}${y + 1}`;
 
-export function mechanicTone(e: Entity) {
-  if (e.kind === 'marker') return tones.safe;
+export function mechanicTone(e: Pick<Entity, 'kind' | 'turns'>) {
+  if (e.kind === 'marker' || e.kind === 'stack') return tones.safe;
+  if (e.kind === 'tower') return tones.soak;
   return e.turns === 1 ? tones.imminent : tones.telegraph;
 }
 
@@ -78,19 +96,41 @@ export function mechanicOrigin(m: Entity, entities: Entity[]): { point: [number,
 }
 
 /** Walkable tiles a mechanic covers. Walls and void never take damage. */
-export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, number][] {
+/** Walkable tiles a mechanic covers, each with a strength from 0 to 1 (below 1 only for flare falloff). Walls and void never take damage. */
+export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, number, number][] {
   const { point: [cx, cy], anchor } = mechanicOrigin(m, phase.entities);
   const a = (m.rotation * Math.PI) / 180, dir = [Math.sin(a), -Math.cos(a)];
   const halfAngle = Math.cos((46 * Math.PI) / 180);
-  const tiles: [number, number][] = [];
+  const inAnchor = (x: number, y: number) => !!anchor && x >= anchor.x && x < anchor.x + footprint(anchor) && y >= anchor.y && y < anchor.y + footprint(anchor);
+  const safeZones = m.kind === 'armageddon' ? phase.entities.filter(e => e.kind === 'marker').map(s => ({ c: mechanicOrigin(s, phase.entities).point, r: s.radius })) : [];
+  const tiles: [number, number, number][] = [];
   for (let y = 0; y < plan.rows; y++) for (let x = 0; x < plan.cols; x++) {
     if (terrainTypes[phase.terrain[y][x]].blocks) continue;
     const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy);
-    if (m.kind === 'cone') {
-      if (anchor && x >= anchor.x && x < anchor.x + footprint(anchor) && y >= anchor.y && y < anchor.y + footprint(anchor)) continue;
-      if (d < 0.3 || d > m.radius + 0.2 || (dx * dir[0] + dy * dir[1]) / d < halfAngle) continue;
-    } else if (d > m.radius) continue;
-    tiles.push([x, y]);
+    let strength = 1;
+    switch (m.kind) {
+      case 'cone':
+        if (inAnchor(x, y) || d < 0.3 || d > m.radius + 0.2 || (dx * dir[0] + dy * dir[1]) / d < halfAngle) continue;
+        break;
+      case 'line': {
+        const along = dx * dir[0] + dy * dir[1], across = Math.abs(dx * dir[1] - dy * dir[0]);
+        if (inAnchor(x, y) || along < -0.01 || along > m.radius + 0.2 || across > (m.width ?? 1) / 2 + 0.01) continue;
+        break;
+      }
+      case 'donut':
+        if (d > m.radius || d <= (m.inner ?? 1)) continue;
+        break;
+      case 'flare':
+        if (d > m.radius) continue;
+        strength = Math.max(0.25, 1 - d / (m.radius + 0.5));
+        break;
+      case 'armageddon':
+        if (safeZones.some(s => Math.hypot(x + 0.5 - s.c[0], y + 0.5 - s.c[1]) <= s.r)) continue;
+        break;
+      default:
+        if (d > m.radius) continue;
+    }
+    tiles.push([x, y, strength]);
   }
   return tiles;
 }
@@ -116,7 +156,15 @@ export function createMechanic(kind: MechanicKind, x: number, y: number): Entity
   const defaults = {
     circle: { name: 'Impact', radius: 2, rotation: 0, turns: 2 },
     cone: { name: 'Cleave', radius: 3, rotation: 180, turns: 2 },
-    marker: { name: 'Stack point', radius: 1.5, rotation: 0, turns: 0 },
+    line: { name: 'Charge', radius: 6, rotation: 180, turns: 2, width: 1 },
+    donut: { name: 'Donut', radius: 4, rotation: 0, turns: 2, inner: 1.5 },
+    flare: { name: 'Flare', radius: 5, rotation: 0, turns: 3 },
+    stack: { name: 'Stack', radius: 1.5, rotation: 0, turns: 2 },
+    spread: { name: 'Spread', radius: 1.5, rotation: 0, turns: 2 },
+    tower: { name: 'Tower', radius: 1, rotation: 0, turns: 3, soak: 2 },
+    knockback: { name: 'Knockback', radius: 3, rotation: 0, turns: 2, push: 2 },
+    armageddon: { name: 'Armageddon', radius: 1, rotation: 0, turns: 3 },
+    marker: { name: 'Safe zone', radius: 1.5, rotation: 0, turns: 0 },
   }[kind];
   return { id: uid(kind), kind, code: '', x, y, ...defaults };
 }
@@ -167,7 +215,7 @@ export function createPlan(): Plan {
       entities: [
         ...roster({ boss: [9, 5], mt: [9, 7], ot: [11, 7], h1: [8, 11], h2: [11, 11], d1: [9, 10], d2: [10, 10], d3: [9, 11], d4: [10, 11] }),
         mech('cleave-2', 'cone', 'Frontal cleave', 9, 5, 3, 180, 1, 'boss'),
-        mech('stack', 'marker', 'Stack point', 9, 10, 1.6, 0, 0),
+        mech('stack', 'stack', 'Stack', 9, 10, 1.6, 0, 2),
       ],
       dialogue: [{ id: 'line-offer', turn: 1, speaker: 'Obsidian Sentinel', text: 'Kneel, and I will let the rest of you leave.', options: [
         { id: 'opt-refuse', text: 'Refuse', outcome: 'The Sentinel enrages. Finish it before the stack point collapses.' },
@@ -193,6 +241,7 @@ export function validatePlan(value: unknown): value is Plan {
   if (!value || typeof value !== 'object') return false;
   const p = value as Plan;
   const int = (n: unknown, min: number, max: number) => Number.isInteger(n) && (n as number) >= min && (n as number) <= max;
+  const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&
     Array.isArray(p.phases) && p.phases.length > 0 && p.phases.length <= 30 && new Set(p.phases.map(f => f?.id)).size === p.phases.length &&
     p.phases.every(f => f && typeof f.id === 'string' && typeof f.name === 'string' && f.name.length <= 120 && typeof f.notes === 'string' && f.notes.length <= 10000 && int(f.turns, 1, 20) &&
@@ -202,6 +251,7 @@ export function validatePlan(value: unknown): value is Plan {
         (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
         int(e.x, 0, p.cols - footprint(e)) && int(e.y, 0, p.rows - footprint(e)) &&
         Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 && int(e.turns, 0, 9) &&
+        num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) &&
         (e.anchor === undefined || typeof e.anchor === 'string')) &&
       Array.isArray(f.dialogue) && f.dialogue.length <= 200 && new Set(f.dialogue.map(l => l?.id)).size === f.dialogue.length &&
       f.dialogue.every(l => l && typeof l.id === 'string' && int(l.turn, 1, 20) && typeof l.speaker === 'string' && l.speaker.length <= 60 &&

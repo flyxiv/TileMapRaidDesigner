@@ -7,6 +7,9 @@ type Props = {
   phaseIndex: number;
   /** Speaker for new lines: the selected unit, else the first boss. */
   defaultSpeaker: string;
+  /** The line shown as a bubble on the map. */
+  activeLineId: string | null;
+  onActivate: (id: string) => void;
   onChange: (fn: (dialogue: DialogueLine[]) => DialogueLine[], coalesceKey?: string) => void;
 };
 
@@ -16,7 +19,7 @@ export function speakerColor(phase: Phase, speaker: string) {
   return unit ? unitTypes[unit.kind as UnitKind].color : '#c9d0cd';
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, onChange }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange }: Props) {
   const phase = plan.phases[phaseIndex];
   const start = phaseTurnRanges(plan)[phaseIndex].start;
   const speakers = [...new Set(phase.entities.filter(e => isUnit(e.kind)).map(e => e.name)), 'Narrator'];
@@ -28,15 +31,17 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, onChange }: Props
   const move = (i: number, by: number) => onChange(d => { const next = d.slice(); [next[i], next[i + by]] = [next[i + by], next[i]]; return next; });
   const add = () => {
     const turn = lines.length ? Math.min(phase.turns, lines[lines.length - 1].turn) : 1;
-    onChange(d => [...d, createLine(turn, defaultSpeaker)]);
+    const line = createLine(turn, defaultSpeaker);
+    onChange(d => [...d, line]);
+    onActivate(line.id);
   };
 
   return (
     <div className="story">
       <datalist id="story-speakers">{speakers.map(s => <option key={s} value={s} />)}</datalist>
-      <p className="hint">Dialogue spoken during this phase, in order. Add choices to let the raid pick a response; a choice can send the fight to another phase.</p>
+      <p className="hint">Dialogue spoken during this phase, in order. The line you are editing appears on the map over its speaker. Add choices to let the raid pick a response; a choice can send the fight to another phase.</p>
       {lines.map((l, i) => (
-        <article key={l.id} className="story-line" style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
+        <article key={l.id} className={`story-line${l.id === activeLineId ? ' active' : ''}`} onFocusCapture={() => onActivate(l.id)} onPointerDown={() => onActivate(l.id)} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
           <div className="story-line-top">
             <select aria-label="Turn" value={Math.min(l.turn, phase.turns)} onChange={e => patchLine(l.id, { turn: Number(e.target.value) })}>
               {Array.from({ length: phase.turns }, (_, t) => <option key={t} value={t + 1}>T{start + t}</option>)}

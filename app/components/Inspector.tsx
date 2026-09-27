@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { footprint, isMechanic, isUnit, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { footprint, isMechanic, isUnit, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -98,8 +98,18 @@ function UnitFields({ plan, phase, prevPhase, u, onChange }: { plan: Plan; phase
   </>;
 }
 
+function Slider({ label, value, unit, min, max, step, onChange }: { label: string; value: number; unit: string; min: number; max: number; step: number; onChange: (v: number) => void }) {
+  return (
+    <label className="field">
+      <span className="field-line">{label} <b>{value} {unit}</b></span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={ev => onChange(Number(ev.target.value))} />
+    </label>
+  );
+}
+
 function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase; m: Entity; onChange: Props['onChange'] }) {
   const tone = mechanicTone(m);
+  const show = mechanicFields(m.kind);
   const anchor = m.anchor ? phase.entities.find(e => e.id === m.anchor) : undefined;
   return <>
     <Header label="Selected telegraph" title={m.name} sub={`${mechanicTypes[m.kind as MechanicKind].name} · ${mechanicTypes[m.kind as MechanicKind].description}`} kind={m.kind} color={tone} round={false} />
@@ -112,19 +122,21 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
           {Object.entries(mechanicTypes).map(([k, t]) => <option key={k} value={k}>{t.name}</option>)}
         </select>
       </label>
-      <label className="field">Origin
+      {show.origin && <label className="field">Origin
         <select value={m.anchor ?? ''} onChange={ev => onChange(ev.target.value ? { anchor: ev.target.value } : { anchor: undefined, ...(anchor ? { x: anchor.x, y: anchor.y } : {}) })}>
           <option value="">Fixed tile</option>
           {phase.entities.filter(e => isUnit(e.kind)).map(e => <option key={e.id} value={e.id}>Follows {e.name}</option>)}
         </select>
-      </label>
+      </label>}
     </div>
-    {!anchor && <PositionFields plan={plan} e={m} onChange={onChange} />}
-    <label className="field">
-      <span className="field-line">Radius <b>{m.radius} tiles</b></span>
-      <input type="range" min={1} max={8} step={0.1} value={m.radius} onChange={ev => onChange({ radius: Number(ev.target.value) }, `radius-${m.id}`)} />
-    </label>
-    {m.kind === 'cone' && (
+    {show.origin && !anchor && <PositionFields plan={plan} e={m} onChange={onChange} />}
+    {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
+    {show.radius && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={8} step={0.1} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
+    {show.inner && <Slider label="Safe radius" value={m.inner ?? 1} unit="tiles" min={0.5} max={Math.max(0.5, m.radius - 0.5)} step={0.1} onChange={v => onChange({ inner: v }, `inner-${m.id}`)} />}
+    {show.width && <Slider label="Width" value={m.width ?? 1} unit={(m.width ?? 1) === 1 ? 'tile' : 'tiles'} min={1} max={8} step={1} onChange={v => onChange({ width: v }, `width-${m.id}`)} />}
+    {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
+    {show.soak && <Slider label="Players needed" value={m.soak ?? 1} unit={(m.soak ?? 1) === 1 ? 'player' : 'players'} min={1} max={8} step={1} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
+    {show.facing && (
       <label className="field">
         <span className="field-line">Facing <b>{facingLabel(m.rotation)}</b></span>
         <input type="range" min={0} max={345} step={15} value={m.rotation} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${m.id}`)} />
