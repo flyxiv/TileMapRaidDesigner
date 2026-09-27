@@ -4,21 +4,21 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, markerTypes, type MarkerKind, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, markerTypes, type MarkerKind, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
-import { Glyph, Logo, MarkerIcon } from './glyphs';
+import { Glyph, Logo, MarkerIcon, WaymarkIcon } from './glyphs';
 import { Inspector } from './Inspector';
 import { PresentView } from './PresentView';
 import { MapSizeDialog } from './MapSizeDialog';
 import { MechanicPages } from './MechanicPages';
 import { SaveToPageMenu, StoryPanel } from './StoryPanel';
 
-type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind } | { type: 'marker'; marker: MarkerKind };
+type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind } | { type: 'marker'; marker: MarkerKind } | { type: 'waymark'; key: WaymarkKey };
 type History = { past: Plan[]; present: Plan; future: Plan[] };
-type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize'; id?: string; offset?: [number, number]; corner?: TransformHandle };
+type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize' | 'waymark'; waymark?: WaymarkKey; id?: string; offset?: [number, number]; corner?: TransformHandle };
 /**
  * The map an edit goes to: the phase's starting map, a conversation's own map (by conversation id), or a telegraph's
  * own map on its timeline card (`m:` + telegraph id), where only that telegraph can be edited.
@@ -226,6 +226,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         }
       }
       if (!p.tile) return;
+      if (g.mode === 'waymark' && g.waymark) { const at = p.tile, k = g.waymark; preview(pl => updatePhase(pl, pi, f => setWaymark(f, k, at))); return; }
       if (g.mode === 'paint' && tool.type === 'terrain') preview(pl => paintOn(pl, t, brushTiles(...p.tile!), tool.terrain));
       if (g.mode === 'drag' && g.id && g.offset) {
         const [x, y] = [p.tile[0] - g.offset[0], p.tile[1] - g.offset[1]];
@@ -244,6 +245,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           gesture.current = p.handle.kind === 'rotate'
             ? { base: presentRef.current, mode: 'rotate', id: p.handle.id }
             : { base: presentRef.current, mode: 'resize', id: p.handle.id, corner: p.handle.kind };
+          break;
+        }
+        // World markers lie under units: a press on one (not on a unit) picks it up.
+        if (p.waymark && !(hit && isUnit(hit.kind))) {
+          setSelectedId(waymarkId(p.waymark));
+          gesture.current = { base: presentRef.current, mode: 'waymark', waymark: p.waymark };
           break;
         }
         setSelectedId(hit?.id ?? null);
@@ -321,6 +328,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   // Right-click menu for a unit or telegraph.
   const [ctx, setCtx] = useState<{ id: string; x: number; y: number; t: Target } | null>(null);
   const openMenu = (id: string, x: number, y: number, t: Target) => {
+    if (waymarkOf(id)) { setActiveTarget(t); setSelectedId(id); setCtx({ id, x, y, t }); return; }
     const e = phaseFor(t).entities.find(x => x.id === id);
     if (!e) return;
     // Select in place: scrolling would close the menu.
@@ -358,6 +366,13 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   };
   const contextMenu = () => {
     if (!ctx) return null;
+    const wm = waymarkOf(ctx.id);
+    if (wm) return (
+      <div className="menu context-menu" role="menu" aria-label={`Waymark ${wm}`} style={{ left: Math.min(ctx.x, window.innerWidth - 230), top: Math.min(ctx.y, window.innerHeight - 110) }}>
+        <div className="menu-heading">Waymark {wm}</div>
+        <button type="button" role="menuitem" className="danger" onClick={() => { setCtx(null); commit(pl => updatePhase(pl, pi, f => setWaymark(f, wm, null))); setSelectedId(null); }}><Trash2 size={14} />Remove</button>
+      </div>
+    );
     const e = phaseFor(ctx.t).entities.find(x => x.id === ctx.id);
     if (!e) return null;
     const mech = isMechanic(e.kind);
@@ -408,6 +423,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   };
   const dropOn = (tile: [number, number], t: Target) => {
     if (dragItem?.type === 'marker') markUnit(tile, t, dragItem.marker);
+    else if (dragItem?.type === 'waymark') { const k = dragItem.key; commit(pl => updatePhase(pl, pi, f => setWaymark(f, k, tile))); setActiveTarget(t); setSelectedId(waymarkId(k)); }
     else if (dragItem && dragItem.type !== 'terrain') spawn(dragItem, tile, undefined, t);
     setDragItem(null);
   };
@@ -483,6 +499,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       else if (k === ']') goPhase(pi + 1);
       else if (k === '?') setShortcuts(s => !s);
       else if ((k === 'delete' || k === 'backspace') && selected) deleteEntity(selected.id);
+      else if ((k === 'delete' || k === 'backspace') && waymarkOf(selectedId)) { const w = waymarkOf(selectedId)!; commit(pl => updatePhase(pl, pi, f => setWaymark(f, w, null))); setSelectedId(null); }
       else if (k.startsWith('arrow') && selected && !(isMechanic(selected.kind) && selected.anchor)) {
         e.preventDefault();
         const d = { arrowup: [0, -1], arrowdown: [0, 1], arrowleft: [-1, 0], arrowright: [1, 0] }[k]!;
@@ -636,6 +653,17 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                   <button key={k} type="button" className="tool-tile marker-tile" title={`Drag onto a unit to mark it with ${markerTypes[k].name}`} aria-label={`Marker: ${markerTypes[k].name}`}
                     onClick={() => notify('Drag it onto a unit to mark it')} {...dragProps({ type: 'marker', marker: k })}>
                     <MarkerIcon kind={k} size={20} />
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section>
+              <div className="section-title">Waymarks <span>Drag onto the floor</span></div>
+              <div className="grid-4">
+                {waymarkKeys.map(k => (
+                  <button key={k} type="button" className={`tool-tile marker-tile${phase.waymarks?.[k] ? ' placed' : ''}`} title={phase.waymarks?.[k] ? `Waymark ${k} is placed; drag again to move it` : `Drag onto the map to place waymark ${k}`} aria-label={`Waymark ${k}`}
+                    onClick={() => notify('Drag it onto a map to place it')} {...dragProps({ type: 'waymark', key: k })}>
+                    <WaymarkIcon k={k} size={22} />
                   </button>
                 ))}
               </div>

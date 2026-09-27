@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { waymarkId, waymarkTypes, type WaymarkKey, aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { MarkerShape, glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -11,7 +11,7 @@ import { SpeechBubble, type Speech } from './SpeechBubble';
 export type TransformHandle = 'rotate' | 'nw' | 'ne' | 'sw' | 'se';
 export type MapPointer = {
   type: 'down' | 'move' | 'up'; tile: [number, number] | null; point: [number, number] | null;
-  entityId?: string; handle?: { id: string; kind: TransformHandle }; event: ReactPointerEvent<SVGSVGElement>;
+  entityId?: string; waymark?: WaymarkKey; handle?: { id: string; kind: TransformHandle }; event: ReactPointerEvent<SVGSVGElement>;
 };
 
 type Props = {
@@ -67,6 +67,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   const handle = (type: MapPointer['type']) => onPointer && ((event: ReactPointerEvent<SVGSVGElement>) => {
     const target = (event.target as Element).closest('[data-entity]');
     const grip = (event.target as Element).closest('[data-handle]');
+    const mark = (event.target as Element).closest('[data-waymark]')?.getAttribute('data-waymark') as WaymarkKey | null | undefined;
     const ctm = event.currentTarget.getScreenCTM();
     const pt = ctm && new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
     const point: [number, number] | null = pt ? [(pt.x - G) / C, (pt.y - G) / C] : null;
@@ -74,6 +75,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
     onPointer({
       type, tile: toTile(event), point, event,
       entityId: type === 'down' ? target?.getAttribute('data-entity') ?? undefined : undefined,
+      waymark: type === 'down' && mark ? mark : undefined,
       handle: type === 'down' && grip ? { id: grip.getAttribute('data-for')!, kind: grip.getAttribute('data-handle') as TransformHandle } : undefined,
     });
   });
@@ -96,7 +98,8 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
       aria-label={`${plan.name}, phase ${phaseIndex + 1}: ${phase.name}`}
       onPointerDown={handle('down')} onPointerMove={handle('move')} onPointerUp={handle('up')} onPointerLeave={onLeave}
       onContextMenu={onEntityMenu && (e => {
-        const id = (e.target as Element).closest('[data-entity]')?.getAttribute('data-entity');
+        const el = (e.target as Element).closest('[data-entity], [data-waymark]');
+        const id = el?.getAttribute('data-entity') ?? (el ? waymarkId(el.getAttribute('data-waymark') as WaymarkKey) : null);
         if (id) { e.preventDefault(); onEntityMenu(id, e.clientX, e.clientY); }
       })}
       onDragOver={onDropTile && ((e: ReactDragEvent<SVGSVGElement>) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; onDragTile?.(toTile(e)); })}
@@ -148,6 +151,9 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
             <MechanicOutline m={m} entities={phase.entities} C={C} selected={selectedId === m.id} />
           </g>
         ))}
+
+        {/* World markers lie on the floor: over telegraph shading, under units. */}
+        {(Object.keys(phase.waymarks ?? {}) as WaymarkKey[]).map(k => <Waymark key={k} k={k} at={phase.waymarks![k]!} C={C} selected={selectedId === waymarkId(k)} />)}
 
         {moves.map(mv => (
           <g key={mv.id} pointerEvents="none">
@@ -419,6 +425,20 @@ function HeadMarker({ u, C }: { u: Entity; C: number }) {
   return (
     <g pointerEvents="none" className="head-marker">
       <svg x={cx - size / 2} y={edge - size * 0.62} width={size} height={size} viewBox="0 0 24 24" overflow="visible"><MarkerShape kind={u.marker} edge="#ffffff" edgeWidth={1.8} /></svg>
+    </g>
+  );
+}
+
+/** A world marker: a translucent circle (A–D) or square (1–4) with its letter or number. */
+function Waymark({ k, at: [x, y], C, selected }: { k: WaymarkKey; at: [number, number]; C: number; selected: boolean }) {
+  const { shape, color } = waymarkTypes[k];
+  const cx = (x + 0.5) * C, cy = (y + 0.5) * C, r = C * 0.44;
+  const outline = { fill: color, fillOpacity: 0.22, stroke: color, strokeWidth: Math.max(1.5, C * 0.07) };
+  return (
+    <g data-waymark={k} className="waymark" aria-label={`Waymark ${k}`}>
+      {selected && <rect x={x * C - 2} y={y * C - 2} width={C + 4} height={C + 4} rx={4} fill="none" stroke="#e8f5d8" strokeWidth="1.5" strokeDasharray="4 3" />}
+      {shape === 'circle' ? <circle cx={cx} cy={cy} r={r} {...outline} /> : <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={C * 0.06} {...outline} />}
+      {C >= 12 && <text x={cx} y={cy + 0.5} textAnchor="middle" dominantBaseline="central" fontSize={C * 0.52} fontWeight="800" fill="#fff" stroke={color} strokeWidth={C * 0.06} paintOrder="stroke">{k}</text>}
     </g>
   );
 }

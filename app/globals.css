@@ -540,3 +540,5 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .field-group-title { font-size: 10px; }
 .cast-time .unit-input { font-size: 12px; font-weight: 600; color: #b9c6ba; }
 .image-select { align-self: center; height: 30px; min-width: 200px; padding: 0 10px; font-size: 12px; }
+.waymark { cursor: grab; }
+.tool-tile.marker-tile.placed { border-color: #4a5552; background: #1a2021; }

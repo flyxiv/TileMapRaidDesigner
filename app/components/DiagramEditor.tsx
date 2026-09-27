@@ -3,13 +3,13 @@ import { ArrowDown, ArrowUp, GripVertical, Map as MapIcon, RotateCcw, RotateCw, 
 import { useRef, useState } from 'react';
 import {
   MAX_RADIUS, MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
-  nextCode, terrainTypes, uid, unitTypes, type Diagram, type Entity, type MechanicKind, type Terrain, type UnitKind,
+  nextCode, setWaymark, terrainTypes, uid, unitTypes, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, type Diagram, type Entity, type MechanicKind, type Terrain, type UnitKind,
 } from '../plan';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
-import { Glyph } from './glyphs';
+import { Glyph, WaymarkIcon } from './glyphs';
 
-type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
-type Gesture = { mode: 'drag' | 'paint' | 'rotate' | 'resize'; id?: string; offset?: [number, number]; corner?: TransformHandle };
+type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind } | { type: 'waymark'; key: WaymarkKey };
+type Gesture = { mode: 'drag' | 'paint' | 'rotate' | 'resize' | 'waymark'; waymark?: WaymarkKey; id?: string; offset?: [number, number]; corner?: TransformHandle };
 
 type Props = {
   diagram: Diagram;
@@ -42,7 +42,11 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
 
   const setEntities = (fn: (entities: Entity[], dd: Diagram) => Entity[], k = key) => onChange(x => ({ ...x, entities: fn(x.entities, x) }), k);
   const patch = (id: string, p: Partial<Entity>, k?: string) => setEntities((es, x) => es.map(e => e.id === id ? clampEntity({ ...e, ...p }, diagramPlan(x)) : e), k);
-  const remove = (id: string) => { setEntities(es => es.filter(e => e.id !== id).map(e => e.anchor === id ? { ...e, anchor: undefined } : e), `${key}-delete`); if (selectedId === id) setSelectedId(null); };
+  const selectedMark = waymarkOf(selectedId);
+  const placeMark = (k: WaymarkKey, tile: [number, number] | null, kk = `${key}-waymark`) => onChange(x => setWaymark(x, k, tile), kk);
+  const remove = (id: string) => {
+    const w = waymarkOf(id);
+    if (w) { placeMark(w, null, `${key}-delete`); setSelectedId(null); return; } setEntities(es => es.filter(e => e.id !== id).map(e => e.anchor === id ? { ...e, anchor: undefined } : e), `${key}-delete`); if (selectedId === id) setSelectedId(null); };
 
   const onPointer = (p: MapPointer) => {
     if (p.type === 'up') { gesture.current = null; return; }
@@ -71,6 +75,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
         }
       }
       if (!p.tile) return;
+      if (g.mode === 'waymark' && g.waymark) { const at = d.waymarks?.[g.waymark]; if (!at || at[0] !== p.tile[0] || at[1] !== p.tile[1]) placeMark(g.waymark, p.tile); return; }
       if (g.mode === 'drag' && target && g.offset) {
         const [x, y] = [p.tile[0] - g.offset[0], p.tile[1] - g.offset[1]];
         if (x !== target.x || y !== target.y) patch(target.id, { x, y });
@@ -80,10 +85,12 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
     const tile = p.tile;
     const hit = p.entityId ? d.entities.find(e => e.id === p.entityId) : tile ? entityAt(phase, ...tile) : undefined;
     if (p.handle) { gesture.current = p.handle.kind === 'rotate' ? { mode: 'rotate', id: p.handle.id } : { mode: 'resize', id: p.handle.id, corner: p.handle.kind }; return; }
+    if (p.waymark && !(hit && isUnit(hit.kind))) { setSelectedId(waymarkId(p.waymark)); gesture.current = { mode: 'waymark', waymark: p.waymark }; return; }
     setSelectedId(hit?.id ?? null);
     if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
   };
   const placeAt = (item: Tool, tile: [number, number]) => {
+    if (item.type === 'waymark') { placeMark(item.key, tile, `${key}-add`); setSelectedId(waymarkId(item.key)); return; }
     let e: Entity;
     if (item.type === 'unit') {
       const { code, name } = nextCode(phase, item.kind);
@@ -112,7 +119,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
 
   return (
     <section ref={el => { sectionRef.current = el; cardRef?.(el); }} tabIndex={-1} className={`diagram page-block${cardClass}`} aria-label={d.caption || `Map ${index + 1}`}
-      onKeyDown={e => { if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !(e.target as HTMLElement).closest('input, textarea, select')) { e.preventDefault(); remove(selected.id); } }}>
+      onKeyDown={e => { if ((e.key === 'Delete' || e.key === 'Backspace') && (selected || selectedMark) && !(e.target as HTMLElement).closest('input, textarea, select')) { e.preventDefault(); remove(selected?.id ?? selectedId!); } }}>
       <header className="diagram-head">
         {handleProps && <button type="button" className="drag-handle" aria-label={`Reorder ${d.caption || `block ${index + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>}
         <span className="line-number" title="Map"><MapIcon size={11} /></span>
@@ -129,6 +136,8 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
         {(Object.keys(unitTypes) as UnitKind[]).map(k => toolButton({ type: 'unit', kind: k }, `Place ${unitTypes[k].name}`, <Glyph kind={k} size={14} color={unitTypes[k].color} strokeWidth={2.2} />))}
         <span className="divider" />
         {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => toolButton({ type: 'mechanic', kind: k }, `Place ${mechanicTypes[k].name}`, <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} />))}
+        <span className="divider" />
+        {waymarkKeys.map(k => toolButton({ type: 'waymark', key: k }, `Place waymark ${k}`, <WaymarkIcon k={k} size={16} />))}
       </div>
       <div className="diagram-map">
         <BattleMap className="battlemap" plan={plan} phaseIndex={0} cell={cell} showMoves={false} selectedId={selectedId}
@@ -136,6 +145,13 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
           onDragTile={tile => { setHover(tile); if (tile && dragItem?.type === 'terrain') paint(tile, dragItem.terrain); }}
           onDropTile={tile => { if (dragItem) placeAt(dragItem, tile); setDragItem(null); }} />
       </div>
+      {selectedMark && (
+        <div className="diagram-selection">
+          <b>Waymark {selectedMark}</b>
+          <span>World marker</span>
+          <button type="button" className="text-button danger" onClick={() => remove(waymarkId(selectedMark))}><Trash2 size={12} /> Remove</button>
+        </div>
+      )}
       {selected && (
         <div className="diagram-selection">
           <b>{selected.name}</b>

@@ -110,7 +110,26 @@ export type Conversation = { id: string; title: string; trigger: DialogueTrigger
 export type Scene = { terrain: Terrain[][]; units: Entity[] };
 export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: 'After mechanic' };
 /** `timeline` orders the phase's conversations and telegraphs (by id); anything missing from it follows at the end. */
-export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[] };
+export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[]; waymarks?: Waymarks };
+/** World markers on the floor, as in FFXIV: A–D circles and 1–4 squares, one of each, shown on every map of a phase. */
+export const waymarkTypes = {
+  A: { shape: 'circle', color: '#ec5b55' }, B: { shape: 'circle', color: '#eccb4c' }, C: { shape: 'circle', color: '#5aa6ee' }, D: { shape: 'circle', color: '#b877ec' },
+  '1': { shape: 'square', color: '#ec5b55' }, '2': { shape: 'square', color: '#eccb4c' }, '3': { shape: 'square', color: '#5aa6ee' }, '4': { shape: 'square', color: '#b877ec' },
+} as const;
+export type WaymarkKey = keyof typeof waymarkTypes;
+/** In palette order (object keys would put the numbers first). */
+export const waymarkKeys: WaymarkKey[] = ['A', 'B', 'C', 'D', '1', '2', '3', '4'];
+/** Placed waymarks by key: the tile each sits on. */
+export type Waymarks = Partial<Record<WaymarkKey, [number, number]>>;
+/** Selection ids for waymarks, so they share selection with units and telegraphs. */
+export const waymarkId = (k: WaymarkKey) => `waymark:${k}`;
+export const waymarkOf = (id: string | null | undefined): WaymarkKey | null => id?.startsWith('waymark:') && Object.hasOwn(waymarkTypes, id.slice(8)) ? id.slice(8) as WaymarkKey : null;
+/** Places (or with no tile, removes) a waymark on a phase or diagram. */
+export function setWaymark<T extends { waymarks?: Waymarks }>(o: T, k: WaymarkKey, tile: [number, number] | null): T {
+  const next: Waymarks = { ...o.waymarks };
+  if (tile) next[k] = tile; else delete next[k];
+  return { ...o, waymarks: Object.keys(next).length ? next : undefined };
+}
 /** A write-up of one mechanic, shared by every telegraph that links to it (in any phase). */
 /** `kind` is the telegraph shape placed when the page is added to the timeline. */
 export type MechanicPage = { id: string; title: string; kind?: MechanicKind; blocks: PageBlock[] };
@@ -123,15 +142,15 @@ export const pageText = (page: MechanicPage) => page.blocks.flatMap(b => b.type 
 /** A page's maps, in order. */
 export const pageMaps = (page: MechanicPage): Diagram[] => page.blocks.flatMap(b => b.type === 'map' ? [b] : []);
 /** A small map that illustrates a mechanic: its own grid, terrain and units, edited on the mechanic's page. */
-export type Diagram = { id: string; caption: string; cols: number; rows: number; terrain: Terrain[][]; entities: Entity[] };
+export type Diagram = { id: string; caption: string; cols: number; rows: number; terrain: Terrain[][]; entities: Entity[]; waymarks?: Waymarks };
 
 /** A throwaway one-phase plan so a diagram can be drawn and edited with the map components. */
 export function diagramPlan(d: Diagram): Plan {
-  return { version: 2, name: d.caption, cols: d.cols, rows: d.rows, pages: [], phases: [{ id: d.id, name: d.caption, notes: '', terrain: d.terrain, entities: d.entities, conversations: [] }] };
+  return { version: 2, name: d.caption, cols: d.cols, rows: d.rows, pages: [], phases: [{ id: d.id, name: d.caption, notes: '', terrain: d.terrain, entities: d.entities, conversations: [], waymarks: d.waymarks }] };
 }
 /** Copies a scene (a phase's terrain and units, or any staged version of it) into a new diagram. */
 export function sceneToDiagram(phase: Phase, plan: Pick<Plan, 'cols' | 'rows'>, caption: string): Diagram {
-  return { id: uid('map'), caption, cols: plan.cols, rows: plan.rows, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })) };
+  return { id: uid('map'), caption, cols: plan.cols, rows: plan.rows, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })), ...(phase.waymarks ? { waymarks: { ...phase.waymarks } } : {}) };
 }
 export function blankDiagram(cols: number, rows: number, caption: string): Diagram {
   return { id: uid('map'), caption, cols, rows, terrain: Array.from({ length: rows }, () => Array.from({ length: cols }, (): Terrain => 'floor')), entities: [] };
@@ -540,6 +559,8 @@ export function validatePlan(value: unknown): value is Plan {
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
       num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.image === undefined || (typeof e.image === 'string' && e.image.length <= 80)) && (e.marker === undefined || Object.hasOwn(markerTypes, e.marker)) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
       (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
+  const validWaymarks = (w: Waymarks | undefined, cols: number, rows: number) => w === undefined || (!!w && typeof w === 'object' && !Array.isArray(w) &&
+    Object.entries(w).every(([k, v]) => Object.hasOwn(waymarkTypes, k) && Array.isArray(v) && v.length === 2 && int(v[0], 0, cols - 1) && int(v[1], 0, rows - 1)));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&
     Array.isArray(p.pages) && p.pages.length <= 200 && new Set(p.pages.map(g => g?.id)).size === p.pages.length &&
@@ -547,11 +568,11 @@ export function validatePlan(value: unknown): value is Plan {
       Array.isArray(g.blocks) && g.blocks.length <= 80 && new Set(g.blocks.map(b => b?.id)).size === g.blocks.length &&
       g.blocks.every(b => b && typeof b.id === 'string' && (
         (b.type === 'text' && typeof b.text === 'string' && b.text.length <= 20000) ||
-        (b.type === 'map' && typeof b.caption === 'string' && b.caption.length <= 200 && int(b.cols, 8, 30) && int(b.rows, 8, 30) && validScene(b.terrain, b.entities, b.cols, b.rows))))) &&
+        (b.type === 'map' && typeof b.caption === 'string' && b.caption.length <= 200 && int(b.cols, 8, 30) && int(b.rows, 8, 30) && validScene(b.terrain, b.entities, b.cols, b.rows) && validWaymarks(b.waymarks, b.cols, b.rows))))) &&
     Array.isArray(p.phases) && p.phases.length > 0 && p.phases.length <= 30 && new Set(p.phases.map(f => f?.id)).size === p.phases.length &&
     p.phases.every(f => f && typeof f.id === 'string' && typeof f.name === 'string' && f.name.length <= 120 && typeof f.notes === 'string' && f.notes.length <= 10000 &&
       (f.timeline === undefined || (Array.isArray(f.timeline) && f.timeline.length <= 1000 && f.timeline.every(id => typeof id === 'string'))) &&
-      validScene(f.terrain, f.entities, p.cols, p.rows) &&
+      validScene(f.terrain, f.entities, p.cols, p.rows) && validWaymarks(f.waymarks, p.cols, p.rows) &&
       Array.isArray(f.conversations) && f.conversations.length <= 100 && new Set(f.conversations.map(c => c?.id)).size === f.conversations.length &&
       f.conversations.every(c => c && typeof c.id === 'string' && typeof c.title === 'string' && c.title.length <= 120 && validTrigger(c.trigger) &&
         (c.scene === undefined || (!!c.scene && validScene(c.scene.terrain, c.scene.units, p.cols, p.rows) && c.scene.units.every(u => isUnit(u.kind)))) &&
@@ -577,6 +598,7 @@ export function resizePlan(plan: Plan, cols: number, rows: number, anchor: [numb
       ...p,
       terrain: Array.from({ length: rows }, (_, y) => Array.from({ length: cols }, (_, x) => p.terrain[y - dy]?.[x - dx] ?? fill)),
       entities: p.entities.map(e => clampEntity({ ...e, x: e.x + dx, y: e.y + dy }, next)),
+      waymarks: p.waymarks && Object.fromEntries(Object.entries(p.waymarks).map(([k, [x, y]]) => [k, [Math.max(0, Math.min(cols - 1, x + dx)), Math.max(0, Math.min(rows - 1, y + dy))]])),
       // Conversation maps and move destinations shift with the map and stay inside it.
       conversations: p.conversations.map(c => ({ ...c,
         ...(c.scene ? { scene: {
