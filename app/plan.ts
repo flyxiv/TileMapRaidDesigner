@@ -96,7 +96,21 @@ export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: '
 export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[] };
 /** A write-up of one mechanic, shared by every telegraph that links to it (in any phase). */
 /** `kind` is the telegraph shape placed when the page is added to the timeline. */
-export type MechanicPage = { id: string; title: string; description: string; kind?: MechanicKind };
+export type MechanicPage = { id: string; title: string; description: string; kind?: MechanicKind; diagrams?: Diagram[] };
+/** A small map that illustrates a mechanic: its own grid, terrain and units, edited on the mechanic's page. */
+export type Diagram = { id: string; caption: string; cols: number; rows: number; terrain: Terrain[][]; entities: Entity[] };
+
+/** A throwaway one-phase plan so a diagram can be drawn and edited with the map components. */
+export function diagramPlan(d: Diagram): Plan {
+  return { version: 2, name: d.caption, cols: d.cols, rows: d.rows, pages: [], phases: [{ id: d.id, name: d.caption, notes: '', terrain: d.terrain, entities: d.entities, conversations: [] }] };
+}
+/** Copies a scene (a phase's terrain and units, or any staged version of it) into a new diagram. */
+export function sceneToDiagram(phase: Phase, plan: Pick<Plan, 'cols' | 'rows'>, caption: string): Diagram {
+  return { id: uid('map'), caption, cols: plan.cols, rows: plan.rows, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })) };
+}
+export function blankDiagram(cols: number, rows: number, caption: string): Diagram {
+  return { id: uid('map'), caption, cols, rows, terrain: Array.from({ length: rows }, () => Array.from({ length: cols }, (): Terrain => 'floor')), entities: [] };
+}
 export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[]; pages: MechanicPage[] };
 
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
@@ -394,21 +408,26 @@ export function validatePlan(value: unknown): value is Plan {
     (s.action.kind === 'motion' && typeof s.action.motion === 'string' && s.action.motion.length <= 120) ||
     (s.action.kind === 'face' && int(s.action.rotation, 0, 359) && (s.action.toward === undefined || typeof s.action.toward === 'string')) ||
     (s.action.kind === 'move' && int(s.action.x, 0, p.cols - 1) && int(s.action.y, 0, p.rows - 1)));
+  /** Terrain grid and units/telegraphs for a map of the given size: a phase, or a diagram on a mechanic page. */
+  const validScene = (terrain: Terrain[][], entities: Entity[], cols: number, rows: number) =>
+    Array.isArray(terrain) && terrain.length === rows && terrain.every(row => Array.isArray(row) && row.length === cols && row.every(t => Object.hasOwn(terrainTypes, t))) &&
+    Array.isArray(entities) && entities.length <= 500 && new Set(entities.map(e => e?.id)).size === entities.length &&
+    entities.every(e => e && typeof e.id === 'string' && typeof e.name === 'string' && e.name.length <= 120 && typeof e.code === 'string' && e.code.length <= 6 &&
+      (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
+      int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
+      Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
+      num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
+      (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&
     Array.isArray(p.pages) && p.pages.length <= 200 && new Set(p.pages.map(g => g?.id)).size === p.pages.length &&
-    p.pages.every(g => g && typeof g.id === 'string' && typeof g.title === 'string' && g.title.length <= 120 && typeof g.description === 'string' && g.description.length <= 20000 && (g.kind === undefined || Object.hasOwn(mechanicTypes, g.kind))) &&
+    p.pages.every(g => g && typeof g.id === 'string' && typeof g.title === 'string' && g.title.length <= 120 && typeof g.description === 'string' && g.description.length <= 20000 && (g.kind === undefined || Object.hasOwn(mechanicTypes, g.kind)) &&
+      (g.diagrams === undefined || (Array.isArray(g.diagrams) && g.diagrams.length <= 40 && g.diagrams.every(d => d && typeof d.id === 'string' && typeof d.caption === 'string' && d.caption.length <= 200 &&
+        int(d.cols, 8, 30) && int(d.rows, 8, 30) && validScene(d.terrain, d.entities, d.cols, d.rows))))) &&
     Array.isArray(p.phases) && p.phases.length > 0 && p.phases.length <= 30 && new Set(p.phases.map(f => f?.id)).size === p.phases.length &&
     p.phases.every(f => f && typeof f.id === 'string' && typeof f.name === 'string' && f.name.length <= 120 && typeof f.notes === 'string' && f.notes.length <= 10000 &&
       (f.timeline === undefined || (Array.isArray(f.timeline) && f.timeline.length <= 1000 && f.timeline.every(id => typeof id === 'string'))) &&
-      Array.isArray(f.terrain) && f.terrain.length === p.rows && f.terrain.every(row => Array.isArray(row) && row.length === p.cols && row.every(t => Object.hasOwn(terrainTypes, t))) &&
-      Array.isArray(f.entities) && f.entities.length <= 500 && new Set(f.entities.map(e => e?.id)).size === f.entities.length &&
-      f.entities.every(e => e && typeof e.id === 'string' && typeof e.name === 'string' && e.name.length <= 120 && typeof e.code === 'string' && e.code.length <= 6 &&
-        (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
-        int(e.x, 0, p.cols - footprint(e)) && int(e.y, 0, p.rows - footprint(e)) &&
-        Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
-        num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
-        (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string')) &&
+      validScene(f.terrain, f.entities, p.cols, p.rows) &&
       Array.isArray(f.conversations) && f.conversations.length <= 100 && new Set(f.conversations.map(c => c?.id)).size === f.conversations.length &&
       f.conversations.every(c => c && typeof c.id === 'string' && typeof c.title === 'string' && c.title.length <= 120 && validTrigger(c.trigger) &&
         Array.isArray(c.lines) && c.lines.length <= 200 && new Set(c.lines.map(l => l?.id)).size === c.lines.length &&

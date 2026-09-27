@@ -1,7 +1,7 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight, Footprints, Hand, RotateCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
+import { diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { Glyph } from './glyphs';
 import { speakerColor } from './StoryPanel';
@@ -92,6 +92,16 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                         <span className="script-mechanic-icon"><Glyph kind={m.kind} size={12} color="#141819" strokeWidth={2.4} /></span><b>{m.name}</b>
                       </div>
                       {li === line && page?.description && <p className="script-mechanic-page">{page.description}</p>}
+                      {li === line && (page?.diagrams ?? []).length > 0 && (
+                        <div className="script-mechanic-maps">
+                          {page!.diagrams!.map(d => (
+                            <figure key={d.id}>
+                              <BattleMap plan={diagramPlan(d)} phaseIndex={0} cell={Math.max(6, Math.floor(180 / d.cols))} coords={false} showMoves={false} />
+                              {d.caption && <figcaption>{d.caption}</figcaption>}
+                            </figure>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 }

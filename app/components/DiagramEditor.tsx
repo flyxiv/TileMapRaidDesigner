@@ -1,0 +1,155 @@
+'use client';
+import { ArrowDown, ArrowUp, Eraser, MousePointer2, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import {
+  MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
+  nextCode, terrainTypes, uid, unitTypes, type Diagram, type Entity, type MechanicKind, type Terrain, type UnitKind,
+} from '../plan';
+import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
+import { Glyph } from './glyphs';
+
+type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
+type Gesture = { mode: 'drag' | 'paint' | 'rotate' | 'resize'; id?: string; offset?: [number, number]; corner?: TransformHandle };
+
+type Props = {
+  diagram: Diagram;
+  index: number;
+  count: number;
+  /** Edits fold into one undo step per gesture through the shared coalescing key. */
+  onChange: (fn: (d: Diagram) => Diagram, coalesceKey?: string) => void;
+  onMove: (by: number) => void;
+  onDelete: () => void;
+};
+
+/** A compact map editor for one illustration on a mechanic page: paint terrain, place, move, resize and rotate. */
+export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDelete }: Props) {
+  const [tool, setTool] = useState<Tool>({ type: 'select' });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hover, setHover] = useState<[number, number] | null>(null);
+  const gesture = useRef<Gesture | null>(null);
+  const plan = diagramPlan(d), phase = plan.phases[0];
+  const selected = d.entities.find(e => e.id === selectedId) ?? null;
+  const cell = Math.max(12, Math.min(26, Math.floor(540 / (d.cols + 1))));
+  const key = `diagram-${d.id}`;
+
+  const setEntities = (fn: (entities: Entity[], dd: Diagram) => Entity[], k = key) => onChange(x => ({ ...x, entities: fn(x.entities, x) }), k);
+  const patch = (id: string, p: Partial<Entity>, k?: string) => setEntities((es, x) => es.map(e => e.id === id ? clampEntity({ ...e, ...p }, diagramPlan(x)) : e), k);
+  const remove = (id: string) => { setEntities(es => es.filter(e => e.id !== id).map(e => e.anchor === id ? { ...e, anchor: undefined } : e), `${key}-delete`); setSelectedId(s => s === id ? null : s); };
+
+  const onPointer = (p: MapPointer) => {
+    if (p.type === 'up') { gesture.current = null; return; }
+    if (p.type === 'move') {
+      setHover(p.tile);
+      const g = gesture.current;
+      if (!g) return;
+      const target = g.id ? d.entities.find(e => e.id === g.id) : undefined;
+      if (g.mode === 'rotate' && target && p.point) {
+        const [cx, cy] = isUnit(target.kind) ? center(target) : mechanicOrigin(target, d.entities).point;
+        const step = isUnit(target.kind) ? 45 : 15, deg = (Math.atan2(p.point[0] - cx, -(p.point[1] - cy)) * 180) / Math.PI;
+        const rotation = ((Math.round(deg / step) * step) % 360 + 360) % 360;
+        if (rotation !== target.rotation) patch(target.id, { rotation });
+      }
+      if (g.mode === 'resize' && target && p.point && g.corner) {
+        if (isUnit(target.kind)) {
+          const s = footprint(target), left = g.corner === 'nw' || g.corner === 'sw', top = g.corner === 'nw' || g.corner === 'ne';
+          const ax = left ? target.x + s : target.x, ay = top ? target.y + s : target.y;
+          const size = Math.max(1, Math.min(MAX_UNIT_SIZE, d.cols, d.rows, Math.round(Math.max(Math.abs(p.point[0] - ax), Math.abs(p.point[1] - ay)))));
+          if (size !== s) patch(target.id, { size: size === unitTypes[target.kind as UnitKind].size ? undefined : size, x: left ? ax - size : ax, y: top ? ay - size : ay });
+        } else {
+          const [cx, cy] = mechanicOrigin(target, d.entities).point;
+          const radius = Math.max(1, Math.min(8, Math.round((Math.hypot(p.point[0] - cx, p.point[1] - cy) / Math.SQRT2) * 2) / 2));
+          if (radius !== target.radius) patch(target.id, { radius, ...(target.inner !== undefined && target.inner >= radius ? { inner: Math.max(0.5, radius - 0.5) } : {}) });
+        }
+      }
+      if (!p.tile) return;
+      if (g.mode === 'paint' && tool.type === 'terrain') paint(p.tile, tool.terrain);
+      if (g.mode === 'drag' && target && g.offset) {
+        const [x, y] = [p.tile[0] - g.offset[0], p.tile[1] - g.offset[1]];
+        if (x !== target.x || y !== target.y) patch(target.id, { x, y });
+      }
+      return;
+    }
+    const tile = p.tile;
+    const hit = p.entityId ? d.entities.find(e => e.id === p.entityId) : tile ? entityAt(phase, ...tile) : undefined;
+    switch (tool.type) {
+      case 'select':
+        if (p.handle) { gesture.current = p.handle.kind === 'rotate' ? { mode: 'rotate', id: p.handle.id } : { mode: 'resize', id: p.handle.id, corner: p.handle.kind }; break; }
+        setSelectedId(hit?.id ?? null);
+        if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
+        break;
+      case 'erase':
+        if (hit) remove(hit.id);
+        break;
+      case 'terrain':
+        if (tile) { gesture.current = { mode: 'paint' }; paint(tile, tool.terrain); }
+        break;
+      case 'unit': {
+        if (!tile) break;
+        const { code, name } = nextCode(phase, tool.kind);
+        const e = clampEntity({ id: uid(tool.kind), kind: tool.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0 }, plan);
+        setEntities(es => [...es, e], `${key}-add`);
+        setSelectedId(e.id);
+        break;
+      }
+      case 'mechanic': {
+        if (!tile) break;
+        let e = createMechanic(tool.kind, tile[0], tile[1]);
+        const on = entityAt(phase, ...tile);
+        if (on && isUnit(on.kind) && tool.kind !== 'armageddon') e = { ...e, anchor: on.id, ...(aims(tool.kind) ? { followFacing: true } : {}) };
+        setEntities(es => [...es, e], `${key}-add`);
+        setSelectedId(e.id);
+        break;
+      }
+    }
+  };
+  const paint = ([x, y]: [number, number], terrain: Terrain) => {
+    if (d.terrain[y][x] === terrain) return;
+    onChange(dd => ({ ...dd, terrain: dd.terrain.map((row, ry) => ry === y ? row.map((t, rx) => rx === x ? terrain : t) : row) }), `${key}-paint`);
+  };
+
+  const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
+  const placing = tool.type === 'unit' || tool.type === 'mechanic' ? tool : null;
+  const highlight = hover && tool.type === 'terrain' ? { x: hover[0], y: hover[1], size: 1 }
+    : hover && placing ? { x: Math.min(hover[0], d.cols - footprint(placing)), y: Math.min(hover[1], d.rows - footprint(placing)), size: footprint(placing) } : null;
+  const toolButton = (t: Tool, label: string, icon: React.ReactNode) => (
+    <button key={label} type="button" className={`diagram-tool${isTool(t) ? ' active' : ''}`} aria-pressed={isTool(t)} aria-label={label} title={label} onClick={() => setTool(t)}>{icon}</button>
+  );
+
+  return (
+    <section className="diagram" aria-label={d.caption || `Map ${index + 1}`}
+      onKeyDown={e => { if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !(e.target as HTMLElement).closest('input, textarea, select')) { e.preventDefault(); remove(selected.id); } }}>
+      <header className="diagram-head">
+        <span className="line-number">{index + 1}</span>
+        <input aria-label="Map caption" className="conversation-title" value={d.caption} maxLength={200} placeholder={`Map ${index + 1}`} onChange={e => onChange(x => ({ ...x, caption: e.target.value }), `${key}-caption`)} />
+        <div className="story-tools">
+          <button type="button" className="icon-button" aria-label="Move map up" disabled={index === 0} onClick={() => onMove(-1)}><ArrowUp size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Move map down" disabled={index === count - 1} onClick={() => onMove(1)}><ArrowDown size={13} /></button>
+          <button type="button" className="icon-button danger" aria-label="Delete map" onClick={() => { if (confirm(`Delete "${d.caption || `Map ${index + 1}`}"?`)) onDelete(); }}><Trash2 size={13} /></button>
+        </div>
+      </header>
+      <div className="diagram-tools" role="toolbar" aria-label="Map tools">
+        {toolButton({ type: 'select' }, 'Select and move', <MousePointer2 size={14} />)}
+        {toolButton({ type: 'erase' }, 'Erase', <Eraser size={14} />)}
+        <span className="divider" />
+        {(Object.keys(terrainTypes) as Terrain[]).map(t => toolButton({ type: 'terrain', terrain: t }, `Paint ${terrainTypes[t].name}`, <span className={`swatch mini ${t}`} />))}
+        <span className="divider" />
+        {(Object.keys(unitTypes) as UnitKind[]).map(k => toolButton({ type: 'unit', kind: k }, `Place ${unitTypes[k].name}`, <Glyph kind={k} size={14} color={unitTypes[k].color} strokeWidth={2.2} />))}
+        <span className="divider" />
+        {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => toolButton({ type: 'mechanic', kind: k }, `Place ${mechanicTypes[k].name}`, <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} />))}
+      </div>
+      <div className={`diagram-map mode-${tool.type}`}>
+        <BattleMap className="battlemap" plan={plan} phaseIndex={0} cell={cell} showMoves={false} selectedId={selectedId}
+          transform={tool.type === 'select'} highlight={highlight} onPointer={onPointer} onLeave={() => setHover(null)} />
+      </div>
+      {selected && (
+        <div className="diagram-selection">
+          <b>{selected.name}</b>
+          <span>{isUnit(selected.kind) ? unitTypes[selected.kind as UnitKind].name : mechanicTypes[selected.kind as MechanicKind].name}</span>
+          <button type="button" className="icon-button" aria-label="Rotate left" onClick={() => patch(selected.id, { rotation: (selected.rotation + (isUnit(selected.kind) ? 315 : 345)) % 360 }, `${key}-rot`)}><RotateCcw size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Rotate right" onClick={() => patch(selected.id, { rotation: (selected.rotation + (isUnit(selected.kind) ? 45 : 15)) % 360 }, `${key}-rot`)}><RotateCw size={13} /></button>
+          <button type="button" className="text-button danger" onClick={() => remove(selected.id)}><Trash2 size={12} /> Remove</button>
+        </div>
+      )}
+    </section>
+  );
+}

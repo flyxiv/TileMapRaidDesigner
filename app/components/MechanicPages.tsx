@@ -1,6 +1,8 @@
 'use client';
-import { BookOpen, MapPin, Plus, Trash2 } from 'lucide-react';
-import { isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type MechanicKind, type MechanicPage, type Plan } from '../plan';
+import { BookOpen, Map as MapIcon, MapPin, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { DiagramEditor } from './DiagramEditor';
+import { blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -9,6 +11,8 @@ type Props = {
   onSelect: (id: string) => void;
   onCreate: () => void;
   onChange: (id: string, patch: Partial<MechanicPage>, coalesceKey?: string) => void;
+  /** Functional page update, for edits that build on the latest saved page (map drags). */
+  onUpdate: (id: string, fn: (page: MechanicPage) => MechanicPage, coalesceKey?: string) => void;
   onDelete: (id: string) => void;
   /** Jump to a telegraph that uses the page: its phase on the map, selected. */
   onShow: (phaseIndex: number, entityId: string) => void;
@@ -22,7 +26,8 @@ export function pageUses(plan: Plan, pageId: string) {
 }
 
 /** One write-up per mechanic, shared by every telegraph that links to it from the map or the timeline. */
-export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onDelete, onShow }: Props) {
+export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUpdate, onDelete, onShow }: Props) {
+  const [addMenu, setAddMenu] = useState(false);
   const page = plan.pages.find(p => p.id === pageId) ?? plan.pages[0];
   const uses = page ? pageUses(plan, page.id) : [];
   return (
@@ -61,6 +66,30 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onDe
             <textarea value={page.description} maxLength={20000} placeholder="What the mechanic does, how to spot it, and how the raid should handle it."
               onChange={e => onChange(page.id, { description: e.target.value }, `page-desc-${page.id}`)} />
           </label>
+          <section className="page-maps">
+            <div className="section-title">Maps <span className="plain">Illustrate the mechanic step by step</span></div>
+            {(page.diagrams ?? []).length === 0 && <p className="hint">No maps yet. Add a blank map, copy a phase, or save a conversation's map from the Timeline.</p>}
+            {(page.diagrams ?? []).map((d, i, all) => (
+              <DiagramEditor key={d.id} diagram={d} index={i} count={all.length}
+                onChange={(fn, key) => onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).map(x => x.id === d.id ? fn(x) : x) }), key)}
+                onMove={by => onUpdate(page.id, g => { const ds = (g.diagrams ?? []).slice(); [ds[i], ds[i + by]] = [ds[i + by], ds[i]]; return { ...g, diagrams: ds }; })}
+                onDelete={() => onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).filter(x => x.id !== d.id) }))} />
+            ))}
+            <div className="menu-wrap">
+              <button type="button" className="button" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Plus size={14} /> Add map</button>
+              {addMenu && (
+                <div className="menu mechanic-menu" role="menu">
+                  {[{ label: 'Blank map', sub: `${plan.cols} × ${plan.rows} floor`, make: () => blankDiagram(plan.cols, plan.rows, `Map ${(page.diagrams ?? []).length + 1}`) },
+                    ...plan.phases.map((f, fi) => ({ label: `Copy phase ${fi + 1}: ${f.name}`, sub: 'Terrain and units as placed in that phase', make: (): Diagram => sceneToDiagram(f, plan, f.name) }))]
+                    .map(o => (
+                      <button key={o.label} type="button" role="menuitem" onClick={() => { setAddMenu(false); const d = o.make(); onUpdate(page.id, g => ({ ...g, diagrams: [...(g.diagrams ?? []), d] })); }}>
+                        <MapIcon size={14} /> <span><b>{o.label}</b><small>{o.sub}</small></span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          </section>
           <section className="page-uses">
             <div className="section-title">Used in the timeline</div>
             {uses.length === 0 && <p className="hint">No telegraph links here yet. In a phase's Timeline tab, pick this page on a telegraph's card.</p>}

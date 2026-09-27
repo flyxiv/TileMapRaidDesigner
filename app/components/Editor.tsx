@@ -412,6 +412,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           plan={plan} pageId={pageId} onSelect={setPageId}
           onCreate={() => { const page = createPage('New mechanic'); commit(p => ({ ...p, pages: [...p.pages, page] })); setPageId(page.id); }}
           onChange={(id, patch, key) => commit(p => ({ ...p, pages: p.pages.map(g => g.id === id ? { ...g, ...patch } : g) }), key)}
+          onUpdate={(id, fn, key) => commit(p => ({ ...p, pages: p.pages.map(g => g.id === id ? fn(g) : g) }), key)}
           onDelete={id => {
             commit(p => ({ ...p, pages: p.pages.filter(g => g.id !== id), phases: p.phases.map(f => ({ ...f, entities: f.entities.map(e => e.page === id ? { ...e, page: undefined } : e) })) }));
             setPageId(null);
@@ -505,7 +506,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             </div>
           </div>
 
-          <div ref={viewportRef} className={`map-viewport tool-${tool.type}${picking ? ' picking' : ''}`}>
+          <div ref={viewportRef} className={`map-viewport mode-${tool.type}${picking ? ' picking' : ''}`}>
             <div className="map-scroll">
               <BattleMap
                 ref={mapRef} className="battlemap" plan={mapPlan} phaseIndex={pi} cell={cell} selectedId={selectedId}
@@ -567,6 +568,14 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
                 onOpenPage={id => { setPageId(id); setView('pages'); }}
                 placingMechanic={picking?.placing ?? null}
+                onSaveDiagram={(pageId, diagram) => {
+                  const page = pageId ? plan.pages.find(g => g.id === pageId) : createPage(diagram.caption || 'New mechanic');
+                  if (!page) return;
+                  commit(p => ({ ...p, pages: pageId
+                    ? p.pages.map(g => g.id === pageId ? { ...g, diagrams: [...(g.diagrams ?? []), diagram] } : g)
+                    : [...p.pages, { ...page, diagrams: [diagram] }] }));
+                  notify(`Map saved to "${page.title || 'Untitled page'}"`);
+                }}
                 onNewMechanic={id => {
                   // A telegraph placed from a page takes the page's shape and name, and links back to it.
                   const page = plan.pages.find(g => g.id === id);

@@ -1,8 +1,9 @@
 'use client';
 import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
+import { BattleMap } from './BattleMap';
 import { Glyph } from './glyphs';
-import { mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -20,6 +21,8 @@ type Props = {
   onSelectMechanic: (id: string) => void;
   onCreatePage: (title: string) => string;
   onOpenPage: (id: string) => void;
+  /** Copy a map into a mechanic page's Maps (`null` makes a new page for it). */
+  onSaveDiagram: (pageId: string | null, diagram: Diagram) => void;
   /** Start placing a telegraph for a mechanic page: the next map click puts it there. */
   onNewMechanic: (pageId: string) => void;
   /** The page whose telegraph is waiting to be placed. */
@@ -180,7 +183,7 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onPickTile, pickingFor }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onSaveDiagram, onPickTile, pickingFor }: Props) {
   const [mechanicMenu, setMechanicMenu] = useState(false);
   const placingPage = placingMechanic ? plan.pages.find(g => g.id === placingMechanic) : undefined;
   const phase = plan.phases[phaseIndex];
@@ -249,6 +252,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
             </div>
           </header>
           <TriggerFields phase={phase} trigger={c.trigger} onChange={(t, key) => t && patchConversation(c.id, x => ({ ...x, trigger: t }), key && `${key}-${c.id}`)} />
+          <ConversationMap plan={plan} phaseIndex={phaseIndex} conversation={c} caption={c.title || `Conversation ${conversations.indexOf(c) + 1}`} onSave={onSaveDiagram} />
           <ol ref={lineDrag.listRef(c.id)} className={`conversation-lines${lineDrag.listClass(c)}`}>
             {c.lines.map((l, li) => {
               const common = {
@@ -555,5 +559,43 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
       </div>
       {page?.description && <p className="page-excerpt">{page.description.length > 160 ? `${page.description.slice(0, 160)}…` : page.description}</p>}
     </section>
+  );
+}
+
+/**
+ * The map as it stands once a conversation has played (every action up to and including its own), with a way to copy
+ * it into a mechanic page's Maps for reuse.
+ */
+function ConversationMap({ plan, phaseIndex, conversation, caption, onSave }: { plan: Plan; phaseIndex: number; conversation: Conversation; caption: string; onSave: (pageId: string | null, d: Diagram) => void }) {
+  const [menu, setMenu] = useState(false);
+  const phase = plan.phases[phaseIndex];
+  const script = scriptOf(phase);
+  let last = -1;
+  script.forEach((s, i) => { if (s.conversation.id === conversation.id) last = i; });
+  const scene = stagePhase(phase, plan, script.slice(0, last + 1).map(s => s.step).filter(isAction));
+  const scenePlan = { ...plan, phases: plan.phases.map((f, i) => i === phaseIndex ? scene : f) };
+  const cell = Math.max(5, Math.min(12, Math.floor(250 / plan.cols)));
+  const save = (pageId: string | null) => { setMenu(false); onSave(pageId, sceneToDiagram(scene, plan, caption)); };
+  return (
+    <div className="conv-map">
+      <div className="conv-map-head">
+        <span>Map after this conversation</span>
+        <div className="menu-wrap">
+          <button type="button" className="text-button" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(o => !o)}><BookOpen size={12} /> Save to page</button>
+          {menu && (
+            <div className="menu conv-map-menu" role="menu">
+              {plan.pages.map(g => (
+                <button key={g.id} type="button" role="menuitem" onClick={() => save(g.id)}>
+                  <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{(g.diagrams ?? []).length} map{(g.diagrams ?? []).length === 1 ? '' : 's'}</small></span>
+                </button>
+              ))}
+              {plan.pages.length > 0 && <hr />}
+              <button type="button" role="menuitem" onClick={() => save(null)}><Plus size={14} /> <span><b>New mechanic page</b><small>Start a page with this map</small></span></button>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="conv-map-image"><BattleMap plan={scenePlan} phaseIndex={phaseIndex} cell={cell} coords={false} showMoves={false} /></div>
+    </div>
   );
 }

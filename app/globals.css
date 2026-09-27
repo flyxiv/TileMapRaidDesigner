@@ -103,8 +103,8 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .map-viewport { position: relative; flex: 1; min-height: 0; background-color: #121718; background-image: radial-gradient(#2c3431 1px, transparent 1px); background-size: 18px 18px; }
 .map-scroll { position: absolute; inset: 0; overflow: auto; display: flex; padding: 24px 24px 44px; }
 .battlemap { margin: auto; flex-shrink: 0; touch-action: none; user-select: none; }
-.tool-terrain .battlemap, .tool-unit .battlemap, .tool-mechanic .battlemap { cursor: crosshair; }
-.tool-erase .battlemap { cursor: not-allowed; }
+.mode-terrain .battlemap, .mode-unit .battlemap, .mode-mechanic .battlemap { cursor: crosshair; }
+.mode-erase .battlemap { cursor: not-allowed; }
 .mech-label { opacity: .55; cursor: pointer; transition: opacity .15s; }
 .mech-label:hover, .mech-label.selected { opacity: 1; }
 .map-legend { position: absolute; left: 16px; bottom: 12px; display: flex; gap: 14px; font-size: 10px; color: #7c8a83; pointer-events: none; }
@@ -432,3 +432,27 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .page-shape { max-width: 520px; }
 .page-shape-row { display: flex; align-items: center; gap: 10px; }
 .page-shape-row select { flex: 1; height: 34px; padding: 0 10px; font-size: 12px; }
+.page-maps { display: flex; flex-direction: column; gap: 14px; }
+.page-maps .menu-wrap { align-self: flex-start; }
+.page-maps .mechanic-menu { top: calc(100% + 6px); bottom: auto; }
+.diagram { padding: 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.diagram-head { display: flex; align-items: center; gap: 8px; }
+.diagram-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.diagram-tool { width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #9ca7a2; background: var(--panel-2); border: 1px solid #343b3a; }
+.diagram-tool.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.swatch.mini { width: 16px; height: 12px; }
+.diagram-map { display: flex; justify-content: center; padding: 12px; border-radius: 8px; background-color: #121718; background-image: radial-gradient(#2c3431 1px, transparent 1px); background-size: 16px 16px; overflow: auto; }
+
+.diagram-selection { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.diagram-selection b { color: var(--text); }
+.diagram-selection .text-button { margin-left: auto; }
+.conv-map { display: flex; flex-direction: column; gap: 6px; }
+.conv-map-head { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.conv-map-head .menu-wrap { position: relative; }
+.conv-map-menu { right: 0; left: auto; top: calc(100% + 4px); min-width: 230px; }
+.conv-map-image { display: flex; justify-content: center; padding: 8px; border-radius: 6px; background: #121718; border: 1px solid #262c2d; pointer-events: none; }
+.script-mechanic-maps { display: flex; flex-wrap: wrap; gap: 10px; }
+.script-mechanic-maps figure { margin: 0; padding: 8px; border-radius: 6px; background: #121718; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.script-mechanic-maps figcaption { font-size: 11px; color: var(--text-2); }
+/* Page sections keep their natural height; the page scrolls instead of squashing maps. */
+.page-editor > *, .page-maps > *, .diagram > * { flex-shrink: 0; }
