@@ -109,23 +109,42 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const undo = useCallback(() => { lastEdit.current = null; setHist(h => h.past.length ? { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future] } : h); }, []);
   const redo = useCallback(() => { lastEdit.current = null; setHist(h => h.future.length ? { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) } : h); }, []);
 
-  // Flush unsaved edits when leaving the editor or closing the tab.
+  // Saving to cloud storage: uploads run one at a time so an older plan never lands after a newer one.
   const latest = useRef(plan);
   latest.current = plan;
-  useEffect(() => {
-    const flush = () => { if (latest.current !== initialPlan) try { saveEncounter(encounterId, latest.current); } catch { /* storage full or blocked */ } };
-    window.addEventListener('pagehide', flush);
-    return () => { window.removeEventListener('pagehide', flush); flush(); };
-  }, [encounterId, initialPlan]);
-  // Autosave after edits settle.
-  useEffect(() => {
-    if (plan === initialPlan) return;
+  const stored = useRef(initialPlan);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const [saveError, setSaveError] = useState('');
+  const pushSave = useCallback((p: Plan) => {
+    const run = queue.current.catch(() => {}).then(async () => {
+      if (p === stored.current) return;
+      await saveEncounter(encounterId, p);
+      stored.current = p;
+    });
+    queue.current = run;
+    return run;
+  }, [encounterId]);
+  const saveNow = useCallback((p: Plan) => {
     setSaveState('saving');
-    const t = setTimeout(() => {
-      try { saveEncounter(encounterId, plan); setSaveState('saved'); } catch { setSaveState('error'); }
-    }, 400);
+    pushSave(p).then(() => { if (latest.current === p) setSaveState('saved'); })
+      .catch((e: Error) => { setSaveState('error'); setSaveError(e.message); });
+  }, [pushSave]);
+  // Autosave once edits settle.
+  useEffect(() => {
+    if (plan === stored.current) return;
+    setSaveState('saving');
+    const t = setTimeout(() => saveNow(plan), 800);
     return () => clearTimeout(t);
-  }, [plan, initialPlan, encounterId]);
+  }, [plan, saveNow]);
+  // Leaving the editor sends any unsaved edits; closing the tab with unsaved edits asks first.
+  useEffect(() => {
+    const unsaved = () => latest.current !== stored.current;
+    const warn = (e: BeforeUnloadEvent) => { if (unsaved()) e.preventDefault(); };
+    const flush = () => { if (unsaved()) saveEncounter(encounterId, latest.current, true).catch(() => {}); };
+    window.addEventListener('beforeunload', warn);
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('beforeunload', warn); window.removeEventListener('pagehide', flush); flush(); };
+  }, [encounterId]);
 
   const patchEntity = useCallback((id: string, patch: Partial<Entity>, key?: string) => {
     commit(p => updatePhase(p, pi, f => ({ ...f, entities: f.entities.map(e => e.id === id ? clampEntity({ ...e, ...patch }, p) : e) })), key);
@@ -236,13 +255,13 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     img.onerror = () => notify('Could not render the map image');
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
   };
-  const duplicate = () => {
+  const duplicate = async () => {
     setMenu(false);
     try {
-      saveEncounter(encounterId, plan);
-      const id = duplicateEncounter(encounterId);
+      await pushSave(plan);
+      const id = await duplicateEncounter(encounterId);
       if (id) router.push(`/encounters/${id}`);
-    } catch { notify('Could not duplicate this encounter'); }
+    } catch (e) { notify(`Could not duplicate this encounter: ${(e as Error).message}`); }
   };
 
   // Keyboard shortcuts (ignored while typing in a field).
@@ -299,7 +318,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         <Link href="/" className="brand"><Logo /><span>Raid<em>Designer</em></span></Link>
         <nav className="crumb" aria-label="Breadcrumb"><Link href="/">Encounters</Link><i>/</i><b>{plan.name}</b></nav>
         <div className="header-actions">
-          <span className={`save-status ${saveState}`}><i />{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Not saved'}</span>
+          {saveState === 'error'
+            ? <button type="button" className="save-status error" title={saveError} onClick={() => saveNow(latest.current)}><i />Not saved · Retry</button>
+            : <span className={`save-status ${saveState}`} title="Saved to cloud storage"><i />{saveState === 'saved' ? 'Saved' : 'Saving…'}</span>}
           <div className="menu-wrap">
             <button type="button" className="button" aria-expanded={menu} aria-haspopup="menu" onClick={() => setMenu(m => !m)}><Download size={14} /> Export</button>
             {menu && (

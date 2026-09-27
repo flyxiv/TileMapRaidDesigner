@@ -342,3 +342,5 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .unit-input input { width: 52px; height: 28px; padding: 0 6px; font-size: 11px; }
 .trigger-params { width: 100%; display: flex; align-items: center; gap: 6px; }
 .trigger-params:empty { display: none; }
+.library-count code { font: 11px ui-monospace, monospace; color: #aab4b0; }
+button.save-status { border: 0; background: none; cursor: pointer; }

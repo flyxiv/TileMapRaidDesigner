@@ -3,7 +3,8 @@ import { Copy, Plus, Trash2, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { canHoldParty, createBlankPlan, createEncounter, deleteEncounter, duplicateEncounter, listEncounters, loadEncounter, parsePlan, type EncounterMeta, type Layout } from '../library';
+import { canHoldParty, createBlankPlan, createEncounter, deleteEncounter, duplicateEncounter, listEncounters, loadEncounter, parsePlan, uploadLocalEncounters, type EncounterMeta, type Layout } from '../library';
+import { createPlan } from '../plan';
 import type { Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { Logo } from './glyphs';
@@ -26,23 +27,38 @@ export function EncounterList() {
   const [toast, setToast] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const refresh = () => {
-    try { setRows(listEncounters().map(e => ({ ...e, plan: loadEncounter(e.id) }))); }
-    catch { setRows([]); setToast('Browser storage is unavailable, so encounters cannot be saved'); }
+  const [where, setWhere] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const refresh = async () => {
+    try {
+      const uploaded = await uploadLocalEncounters();
+      if (uploaded) setToast(`Moved ${uploaded} encounter${uploaded > 1 ? 's' : ''} from this browser to cloud storage`);
+      const { encounters, location } = await listEncounters();
+      setWhere(location); setError('');
+      setRows(encounters.map(e => ({ ...e, plan: null })));
+      // Thumbnails need the full plans; fill them in as they arrive.
+      encounters.forEach(e => loadEncounter(e.id).then(plan => setRows(rs => rs && rs.map(r => r.id === e.id ? { ...r, plan } : r))).catch(() => {}));
+    } catch (e) { setError((e as Error).message); setRows(rs => rs ?? []); }
   };
-  useEffect(refresh, []);
+  useEffect(() => { refresh(); }, []);
+  /** Runs a storage action, reporting failures instead of throwing. */
+  const act = async (fn: () => Promise<unknown>, failure: string) => {
+    setBusy(true);
+    try { await fn(); } catch (e) { setToast(`${failure}: ${(e as Error).message}`); } finally { setBusy(false); }
+  };
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2800); return () => clearTimeout(t); }, [toast]);
 
   const importFile = async (file: File) => {
     const plan = parsePlan(await file.text());
     if (!plan) { setToast('That file is not a valid raid plan'); return; }
-    router.push(`/encounters/${createEncounter(plan)}`);
+    await act(async () => router.push(`/encounters/${await createEncounter(plan)}`), 'Could not import');
   };
-  const duplicate = (e: Row) => { if (duplicateEncounter(e.id)) refresh(); };
+  const create = (plan: Plan) => act(async () => router.push(`/encounters/${await createEncounter(plan)}`), 'Could not create the encounter');
+  const duplicate = (e: Row) => act(async () => { await duplicateEncounter(e.id); await refresh(); }, 'Could not duplicate');
   const remove = (e: Row) => {
-    if (!confirm(`Delete "${e.name}"? This cannot be undone.`)) return;
-    deleteEncounter(e.id);
-    refresh();
+    if (!confirm(`Delete "${e.name}"? This removes it from cloud storage and cannot be undone.`)) return;
+    act(async () => { await deleteEncounter(e.id); await refresh(); }, 'Could not delete');
   };
 
   return (
@@ -62,14 +78,25 @@ export function EncounterList() {
             <div className="eyebrow">Your raids</div>
             <h1>Encounters</h1>
           </div>
-          {rows && rows.length > 0 && <span className="library-count">{rows.length} encounter{rows.length > 1 ? 's' : ''} · saved in this browser</span>}
+          {rows && where && <span className="library-count">{rows.length} encounter{rows.length === 1 ? '' : 's'} · saved to <code>{where}</code></span>}
         </div>
 
-        {rows && rows.length === 0 && (
+        {error && (
+          <div className="library-empty">
+            <h2>Could not reach cloud storage</h2>
+            <p>{error}</p>
+            <button type="button" className="button primary" onClick={() => refresh()}>Try again</button>
+          </div>
+        )}
+        {!rows && !error && <p className="hint">Loading encounters…</p>}
+        {rows && !error && rows.length === 0 && (
           <div className="library-empty">
             <h2>No encounters yet</h2>
-            <p>Start with an empty arena, or import a plan someone exported as JSON.</p>
-            <button type="button" className="button primary" onClick={() => setCreating(true)}><Plus size={14} /> New encounter</button>
+            <p>Start with an empty arena, try the sample encounter, or import a plan someone exported as JSON.</p>
+            <div className="dialog-actions">
+              <button type="button" className="button" disabled={busy} onClick={() => create(createPlan())}>Open the sample encounter</button>
+              <button type="button" className="button primary" onClick={() => setCreating(true)}><Plus size={14} /> New encounter</button>
+            </div>
           </div>
         )}
 
@@ -78,7 +105,7 @@ export function EncounterList() {
             <article key={e.id} className="encounter-card">
               <Link href={`/encounters/${e.id}`} className="encounter-open">
                 <div className="encounter-thumb">
-                  {e.plan && <BattleMap plan={e.plan} phaseIndex={0} cell={Math.max(4, Math.min(Math.floor(280 / e.cols), Math.floor(150 / e.rows)))} coords={false} showMoves={false} />}
+                  {e.plan && e.cols > 0 && <BattleMap plan={e.plan} phaseIndex={0} cell={Math.max(4, Math.min(Math.floor(280 / e.cols), Math.floor(150 / e.rows)))} coords={false} showMoves={false} />}
                 </div>
                 <div className="encounter-info">
                   <h2>{e.name}</h2>
@@ -87,8 +114,8 @@ export function EncounterList() {
                 </div>
               </Link>
               <div className="encounter-actions">
-                <button type="button" className="icon-button" aria-label={`Duplicate ${e.name}`} title="Duplicate" onClick={() => duplicate(e)}><Copy size={15} /></button>
-                <button type="button" className="icon-button danger" aria-label={`Delete ${e.name}`} title="Delete" onClick={() => remove(e)}><Trash2 size={15} /></button>
+                <button type="button" className="icon-button" aria-label={`Duplicate ${e.name}`} title="Duplicate" disabled={busy} onClick={() => duplicate(e)}><Copy size={15} /></button>
+                <button type="button" className="icon-button danger" aria-label={`Delete ${e.name}`} title="Delete" disabled={busy} onClick={() => remove(e)}><Trash2 size={15} /></button>
               </div>
             </article>
           ))}
@@ -98,7 +125,7 @@ export function EncounterList() {
         </div>
       </main>
 
-      {creating && <NewEncounterDialog onClose={() => setCreating(false)} onCreate={plan => router.push(`/encounters/${createEncounter(plan)}`)} />}
+      {creating && <NewEncounterDialog onClose={() => setCreating(false)} onCreate={plan => { setCreating(false); create(plan); }} />}
       <div className={`toast${toast ? ' visible' : ''}`} role="status">{toast}</div>
     </div>
   );
