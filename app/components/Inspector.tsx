@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { MAX_UNIT_SIZE, footprint, isMechanic, isUnit, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -132,13 +132,28 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
           {Object.entries(mechanicTypes).map(([k, t]) => <option key={k} value={k}>{t.name}</option>)}
         </select>
       </label>
-      {show.origin && <label className="field">Origin
-        <select value={m.anchor ?? ''} onChange={ev => onChange(ev.target.value ? { anchor: ev.target.value } : { anchor: undefined, ...(anchor ? { x: anchor.x, y: anchor.y } : {}) })}>
-          <option value="">Fixed tile</option>
-          {phase.entities.filter(e => isUnit(e.kind)).map(e => <option key={e.id} value={e.id}>Follows {e.name}</option>)}
-        </select>
-      </label>}
     </div>
+    {show.origin && (
+      <label className="field">Starts from
+        <select value={m.anchor ?? ''} onChange={ev => onChange(ev.target.value
+          ? { anchor: ev.target.value, ...(aims(m.kind) && m.followFacing === undefined ? { followFacing: true } : {}) }
+          : { anchor: undefined, followFacing: undefined, ...(anchor ? { x: anchor.x, y: anchor.y, rotation: mechanicFacing(m, phase.entities) } : {}) })}>
+          <option value="">A fixed tile</option>
+          {(Object.keys(unitCategories) as UnitCategory[]).map(cat => {
+            const units = phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === cat);
+            return units.length > 0 && (
+              <optgroup key={cat} label={unitCategories[cat].name}>
+                {units.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </optgroup>
+            );
+          })}
+        </select>
+      </label>
+    )}
+    {anchor && <p className="hint">Moves with {anchor.name}. Drop a telegraph onto a unit to attach it there.</p>}
+    {anchor && aims(m.kind) && (
+      <label className="check"><input type="checkbox" checked={!!m.followFacing} onChange={ev => onChange({ followFacing: ev.target.checked, ...(ev.target.checked ? {} : { rotation: anchor.rotation }) })} /> Face the way {anchor.name} faces</label>
+    )}
     {show.origin && !anchor && <PositionFields plan={plan} e={m} onChange={onChange} />}
     {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
     {show.radius && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={8} step={0.1} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
@@ -146,7 +161,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
     {show.width && <Slider label="Width" value={m.width ?? 1} unit={(m.width ?? 1) === 1 ? 'tile' : 'tiles'} min={1} max={8} step={1} onChange={v => onChange({ width: v }, `width-${m.id}`)} />}
     {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
     {show.soak && <Slider label="Players needed" value={m.soak ?? 1} unit={(m.soak ?? 1) === 1 ? 'player' : 'players'} min={1} max={8} step={1} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
-    {show.facing && (
+    {show.facing && !(anchor && m.followFacing) && (
       <label className="field">
         <span className="field-line">Facing <b>{facingLabel(m.rotation)}</b></span>
         <input type="range" min={0} max={345} step={15} value={m.rotation} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${m.id}`)} />

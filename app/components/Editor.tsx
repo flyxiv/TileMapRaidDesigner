@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, center, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -235,8 +235,15 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     if (item.type === 'unit') {
       const { code, name } = nextCode(phase, item.kind);
       e = clampEntity({ id: uid(item.kind), kind: item.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0, turns: 0 }, plan);
-    } else if (item.type === 'mechanic') e = createMechanic(item.kind, tile[0], tile[1]);
-    else return;
+    } else if (item.type === 'mechanic') {
+      e = createMechanic(item.kind, tile[0], tile[1]);
+      // Dropped on a unit: the telegraph starts from that unit, and cones and lines aim where it faces.
+      const on = entityAt(phase, ...tile);
+      if (on && isUnit(on.kind) && item.kind !== 'armageddon') {
+        e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
+        notify(`${e.name} starts from ${on.name}`);
+      }
+    } else return;
     commit(pl => updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, e] })));
     setSelectedId(e.id);
   };

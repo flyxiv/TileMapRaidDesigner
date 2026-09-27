@@ -54,6 +54,8 @@ export type Entity = {
   inner?: number; width?: number; push?: number; soak?: number;
   /** Units only: tiles per side, overriding the type's usual size. */
   size?: number;
+  /** Cones and lines that start from a unit: aim the way that unit faces instead of their own rotation. */
+  followFacing?: boolean;
 };
 /** A choice offered on a dialogue line. `goto` names the phase the fight jumps to when it is picked. */
 export type DialogueOption = { id: string; text: string; outcome: string; goto?: string };
@@ -127,11 +129,18 @@ export function mechanicOrigin(m: Entity, entities: Entity[]): { point: [number,
   return anchor ? { point: center(anchor), anchor } : { point: center(m) };
 }
 
+/** Direction a telegraph points, in compass degrees: its own rotation, or its unit's facing when it follows it. */
+export function mechanicFacing(m: Entity, entities: Entity[]) {
+  const anchor = m.followFacing ? mechanicOrigin(m, entities).anchor : undefined;
+  return anchor ? anchor.rotation : m.rotation;
+}
+export const aims = (kind: Kind) => kind === 'cone' || kind === 'line';
+
 /** Walkable tiles a mechanic covers. Walls and void never take damage. */
 /** Walkable tiles a mechanic covers, each with a strength from 0 to 1 (below 1 only for flare falloff). Walls and void never take damage. */
 export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, number, number][] {
   const { point: [cx, cy], anchor } = mechanicOrigin(m, phase.entities);
-  const a = (m.rotation * Math.PI) / 180, dir = [Math.sin(a), -Math.cos(a)];
+  const a = (mechanicFacing(m, phase.entities) * Math.PI) / 180, dir = [Math.sin(a), -Math.cos(a)];
   const halfAngle = Math.cos((46 * Math.PI) / 180);
   const inAnchor = (x: number, y: number) => !!anchor && x >= anchor.x && x < anchor.x + footprint(anchor) && y >= anchor.y && y < anchor.y + footprint(anchor);
   const safeZones = m.kind === 'armageddon' ? phase.entities.filter(e => e.kind === 'marker').map(s => ({ c: mechanicOrigin(s, phase.entities).point, r: s.radius })) : [];
@@ -309,7 +318,7 @@ export function validatePlan(value: unknown): value is Plan {
         int(e.x, 0, p.cols - footprint(e)) && int(e.y, 0, p.rows - footprint(e)) &&
         Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 && int(e.turns, 0, 9) &&
         num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
-        (e.anchor === undefined || typeof e.anchor === 'string')) &&
+        (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean')) &&
       Array.isArray(f.conversations) && f.conversations.length <= 100 && new Set(f.conversations.map(c => c?.id)).size === f.conversations.length &&
       f.conversations.every(c => c && typeof c.id === 'string' && typeof c.title === 'string' && c.title.length <= 120 && validTrigger(c.trigger) &&
         Array.isArray(c.lines) && c.lines.length <= 200 && new Set(c.lines.map(l => l?.id)).size === c.lines.length &&

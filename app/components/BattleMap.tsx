@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { center, colLabel, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { aims, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -196,7 +196,7 @@ function Arrows({ cx, cy, from, to, count, tone, head }: { cx: number; cy: numbe
 function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: Entity[]; C: number; selected: boolean }) {
   const { point: [ox, oy], anchor } = mechanicOrigin(m, entities);
   const cx = ox * C, cy = oy * C, R = m.radius * C, tone = mechanicTone(m), width = selected ? 2.4 : 1.5;
-  const a = (m.rotation * Math.PI) / 180, head = Math.max(4, C * 0.18);
+  const a = (mechanicFacing(m, entities) * Math.PI) / 180, head = Math.max(4, C * 0.18);
   const ring = (r: number, dashed = true, opacity = 1) => <circle cx={cx} cy={cy} r={r} fill="none" stroke={tone} strokeWidth={width} strokeOpacity={opacity} strokeDasharray={dashed ? '5 4' : undefined} />;
   let shape = null;
   switch (m.kind) {
@@ -233,7 +233,7 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
 
 function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Plan; entities: Entity[]; C: number; selected: boolean }) {
   const { point: [ox, oy], anchor } = mechanicOrigin(m, entities);
-  const a = (m.rotation * Math.PI) / 180;
+  const a = (mechanicFacing(m, entities) * Math.PI) / 180;
   let [x, y] = [ox, oy];
   if (m.kind === 'cone' || m.kind === 'line') [x, y] = [ox + Math.sin(a) * m.radius * (m.kind === 'cone' ? 0.88 : 0.55), oy - Math.cos(a) * m.radius * (m.kind === 'cone' ? 0.88 : 0.55)];
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
@@ -315,8 +315,9 @@ function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: nu
   const [ox, oy] = unit ? center(e) : mechanicOrigin(e, entities).point;
   const cx = ox * C, cy = oy * C;
   const half = unit ? (footprint(e) * C) / 2 + 3 : e.radius * C;
-  const rotates = unit || e.kind === 'cone' || e.kind === 'line';
-  const a = (e.rotation * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a);
+  // A telegraph that follows its unit's facing is aimed by rotating the unit instead.
+  const rotates = unit || (aims(e.kind) && !(e.followFacing && e.anchor));
+  const a = ((unit ? e.rotation : mechanicFacing(e, entities)) * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a);
   // The stem leaves the box edge in the facing direction.
   const edge = half / Math.max(Math.abs(dx), Math.abs(dy)), stem = Math.max(22, C * 0.8);
   const sx = cx + dx * edge, sy = cy + dy * edge, hx = cx + dx * (edge + stem), hy = cy + dy * (edge + stem);
