@@ -344,3 +344,14 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .trigger-params:empty { display: none; }
 .library-count code { font: 11px ui-monospace, monospace; color: #aab4b0; }
 button.save-status { border: 0; background: none; cursor: pointer; }
+.conversation { padding: 12px; border-radius: 10px; background: #1a2021; border: 1px solid #2c3334; display: flex; flex-direction: column; gap: 10px; }
+.conversation-head { display: flex; align-items: center; gap: 6px; }
+.conversation-title { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid transparent; background: none; font: 600 14px var(--display); letter-spacing: -.2px; }
+.conversation-title:hover, .conversation-title:focus { border-color: var(--line); background: var(--field); }
+.conversation-lines { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.line-number { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: #262e2f; color: var(--muted); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.conversation > .text-button { align-self: flex-start; }
+.script-conversation { display: flex; flex-direction: column; gap: 8px; }
+.script-conversation + .script-conversation { margin-top: 8px; }
+.script-conversation-head { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.script-conversation-head b { font: 600 14px var(--display); }

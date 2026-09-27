@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  clampEntity, createMechanic, resizePlan, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  clampEntity, createMechanic, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -221,12 +221,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
   const addPhase = () => {
-    const next: Phase = { id: uid('phase'), name: `Phase ${plan.phases.length + 1}`, notes: '', turns: 3, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })), dialogue: [] };
+    const next: Phase = { id: uid('phase'), name: `Phase ${plan.phases.length + 1}`, notes: '', turns: 3, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })), conversations: [] };
     commit(p => ({ ...p, phases: [...p.phases.slice(0, pi + 1), next, ...p.phases.slice(pi + 1)] }));
     setPhaseIndex(pi + 1);
   };
   const duplicatePhase = () => {
-    const copy: Phase = { ...phase, id: uid('phase'), name: `${phase.name} (copy)`, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })), dialogue: phase.dialogue.map(l => ({ ...l, id: uid('line'), options: l.options.map(o => ({ ...o, id: uid('opt') })) })) };
+    const copy: Phase = { ...phase, id: uid('phase'), name: `${phase.name} (copy)`, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })), conversations: phase.conversations.map(c => ({ ...c, id: uid('conv'), lines: c.lines.map(l => ({ ...l, id: uid('line'), options: l.options.map(o => ({ ...o, id: uid('opt') })) })) })) };
     commit(p => ({ ...p, phases: [...p.phases.slice(0, pi + 1), copy, ...p.phases.slice(pi + 1)] }));
     setPhaseIndex(pi + 1);
   };
@@ -305,10 +305,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const units = phase.entities.filter(e => isUnit(e.kind));
   const moveCount = prevPhase ? units.filter(u => { const b = prevPhase.entities.find(e => e.id === u.id); return b && (b.x !== u.x || b.y !== u.y); }).length : 0;
   // While the Story tab is open, the line being edited shows as a bubble over its speaker.
-  const activeLine = phase.dialogue.find(l => l.id === activeLineId) ?? phase.dialogue[0];
-  const speech = panel === 'story' && activeLine ? {
-    speaker: activeLine.speaker, text: activeLine.text, options: activeLine.options.map(o => o.text), placement: activeLine.placement,
-    turnLabel: triggerLabel(activeLine.trigger, phase).toUpperCase(),
+  const script = scriptOf(phase);
+  const active = script.find(s => s.line.id === activeLineId) ?? script[0];
+  const activeLine = active?.line;
+  const speech = panel === 'story' && active ? {
+    speaker: active.line.speaker, text: active.line.text, options: active.line.options.map(o => o.text), placement: active.line.placement,
+    turnLabel: [active.conversation.title, triggerLabel(active.conversation.trigger, phase)].filter(Boolean).join(' · ').toUpperCase(),
   } : null;
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
 
@@ -453,7 +455,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <div className="phase-list">
               {plan.phases.map((p, i) => (
                 <button key={p.id} type="button" className={`phase-card${i === pi ? ' active' : ''}`} aria-current={i === pi ? 'step' : undefined} onClick={() => setPhaseIndex(i)}>
-                  <span className="phase-number"><span>Phase {i + 1}{p.dialogue.length > 0 && <span className="phase-lines" title={`${p.dialogue.length} dialogue line${p.dialogue.length > 1 ? 's' : ''}`}><MessageSquare size={10} /> {p.dialogue.length}</span>}</span><span>{ranges[i].start === ranges[i].end ? `T${ranges[i].start}` : `T${ranges[i].start}–${ranges[i].end}`}</span></span>
+                  <span className="phase-number"><span>Phase {i + 1}{p.conversations.length > 0 && <span className="phase-lines" title={`${p.conversations.length} conversation${p.conversations.length > 1 ? 's' : ''}`}><MessageSquare size={10} /> {p.conversations.length}</span>}</span><span>{ranges[i].start === ranges[i].end ? `T${ranges[i].start}` : `T${ranges[i].start}–${ranges[i].end}`}</span></span>
                   <b>{p.name}</b>
                   <span className="ticks">{Array.from({ length: p.turns }, (_, t) => <i key={t} />)}</span>
                 </button>
@@ -471,7 +473,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           <div className="panel-tabs" role="tablist">
             <button type="button" role="tab" id="tab-details" aria-selected={panel === 'details'} aria-controls="panel-details" onClick={() => setPanel('details')}>Details</button>
             <button type="button" role="tab" id="tab-story" aria-selected={panel === 'story'} aria-controls="panel-story" onClick={() => setPanel('story')}>
-              Story{phase.dialogue.length > 0 && <span className="tab-count">{phase.dialogue.length}</span>}
+              Story{phase.conversations.length > 0 && <span className="tab-count">{phase.conversations.length}</span>}
             </button>
           </div>
           {panel === 'story' ? (
@@ -479,7 +481,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <StoryPanel
                 plan={plan} phaseIndex={pi} activeLineId={activeLine?.id ?? null} onActivate={setActiveLineId}
                 defaultSpeaker={(selected && isUnit(selected.kind) ? selected : phase.entities.find(e => e.kind === 'boss'))?.name ?? 'Narrator'}
-                onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, dialogue: fn(f.dialogue) })), key)}
+                onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, conversations: fn(f.conversations) })), key)}
               />
             </div>
           ) : <div id="panel-details" role="tabpanel" aria-labelledby="tab-details" className="details-panel">

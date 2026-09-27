@@ -1,7 +1,7 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { isMechanic, mechanicTone, triggerLabel, mechanicTypes, type MechanicKind, phaseTurnRanges, turnRangeText, type Plan } from '../plan';
+import { isMechanic, lineCount, mechanicTone, scriptOf, triggerLabel, mechanicTypes, type MechanicKind, phaseTurnRanges, turnRangeText, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { speakerColor } from './StoryPanel';
 
@@ -18,7 +18,8 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   const [chosen, setChosen] = useState<Record<string, string>>({});
   // The dialogue line on screen; it starts at the first line whenever the phase changes some other way.
   const [cursor, setCursor] = useState({ phase: index, line: 0 });
-  const line = cursor.phase === index ? Math.min(cursor.line, Math.max(0, phase.dialogue.length - 1)) : 0;
+  const script = scriptOf(phase);
+  const line = cursor.phase === index ? Math.min(cursor.line, Math.max(0, script.length - 1)) : 0;
 
   useLayoutEffect(() => {
     const el = stage.current;
@@ -36,21 +37,22 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
       // Arrow keys step through the phase's dialogue first, then move between phases.
       else if (e.key === 'ArrowRight' || e.key === ' ') {
         e.preventDefault();
-        if (line < phase.dialogue.length - 1) setCursor({ phase: index, line: line + 1 });
+        if (line < script.length - 1) setCursor({ phase: index, line: line + 1 });
         else onIndex(Math.min(plan.phases.length - 1, index + 1));
       } else if (e.key === 'ArrowLeft') {
         if (line > 0) setCursor({ phase: index, line: line - 1 });
-        else if (index > 0) { setCursor({ phase: index - 1, line: plan.phases[index - 1].dialogue.length - 1 }); onIndex(index - 1); }
+        else if (index > 0) { setCursor({ phase: index - 1, line: lineCount(plan.phases[index - 1]) - 1 }); onIndex(index - 1); }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, line, phase.dialogue.length, onExit, onIndex, plan.phases]);
+  }, [index, line, script.length, onExit, onIndex, plan.phases]);
 
-  const current = phase.dialogue[line];
-  const speech = current ? {
+  const current = script[line]?.line;
+  const currentConversation = script[line]?.conversation;
+  const speech = current && currentConversation ? {
     speaker: current.speaker, text: current.text, options: current.options.map(o => o.text), placement: current.placement,
-    turnLabel: triggerLabel(current.trigger, phase).toUpperCase(),
+    turnLabel: [currentConversation.title, triggerLabel(currentConversation.trigger, phase)].filter(Boolean).join(' · ').toUpperCase(),
     picked: current.options.findIndex(o => o.id === chosen[current.id]),
   } : null;
 
@@ -69,35 +71,41 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
           <ol className="present-steps">
             {steps(phase.notes).map((s, i) => <li key={i}><span>{i + 1}</span>{s}</li>)}
           </ol>
-          {phase.dialogue.length > 0 && (
+          {phase.conversations.length > 0 && (
             <div className="present-story-script">
               <div className="section-title">Story</div>
-              {phase.dialogue.map((l, li) => {
-                const pick = l.options.find(o => o.id === chosen[l.id]);
-                const target = pick?.goto ? plan.phases.findIndex(p => p.id === pick.goto) : -1;
-                return (
-                  <div key={l.id} className={`script-line${li === line ? ' active' : ''}`} onClick={() => setCursor({ phase: index, line: li })} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
-                    <div className="script-meta"><span className="script-turn">{triggerLabel(l.trigger, phase).toUpperCase()}</span><b>{l.speaker || 'Narrator'}</b></div>
-                    {l.text && <p>{l.text}</p>}
-                    {l.options.length > 0 && (
-                      <div className="script-options">
-                        {l.options.map((o, oi) => (
-                          <button key={o.id} type="button" aria-pressed={chosen[l.id] === o.id} className={chosen[l.id] === o.id ? 'picked' : ''}
-                            onClick={() => setChosen(c => ({ ...c, [l.id]: o.id }))}>
-                            <span>{String.fromCharCode(65 + oi)}</span>{o.text || 'Untitled choice'}
-                          </button>
-                        ))}
+              {phase.conversations.map((c, ci) => (
+                <div key={c.id} className="script-conversation">
+                  <div className="script-conversation-head"><span className="script-turn">{triggerLabel(c.trigger, phase).toUpperCase()}</span><b>{c.title || `Conversation ${ci + 1}`}</b></div>
+                  {c.lines.map(l => {
+                    const li = script.findIndex(s => s.line.id === l.id);
+                    const pick = l.options.find(o => o.id === chosen[l.id]);
+                    const target = pick?.goto ? plan.phases.findIndex(p => p.id === pick.goto) : -1;
+                    return (
+                      <div key={l.id} className={`script-line${li === line ? ' active' : ''}`} onClick={() => setCursor({ phase: index, line: li })} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
+                        <div className="script-meta"><b>{l.speaker || 'Narrator'}</b></div>
+                        {l.text && <p>{l.text}</p>}
+                        {l.options.length > 0 && (
+                          <div className="script-options">
+                            {l.options.map((o, oi) => (
+                              <button key={o.id} type="button" aria-pressed={chosen[l.id] === o.id} className={chosen[l.id] === o.id ? 'picked' : ''}
+                                onClick={() => setChosen(c => ({ ...c, [l.id]: o.id }))}>
+                                <span>{String.fromCharCode(65 + oi)}</span>{o.text || 'Untitled choice'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {pick && (pick.outcome || target >= 0) && (
+                          <div className="script-outcome">
+                            {pick.outcome && <p>{pick.outcome}</p>}
+                            {target >= 0 && <button type="button" className="text-button" onClick={() => onIndex(target)}>Go to phase {target + 1}: {plan.phases[target].name} <ArrowRight size={13} /></button>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {pick && (pick.outcome || target >= 0) && (
-                      <div className="script-outcome">
-                        {pick.outcome && <p>{pick.outcome}</p>}
-                        {target >= 0 && <button type="button" className="text-button" onClick={() => onIndex(target)}>Go to phase {target + 1}: {plan.phases[target].name} <ArrowRight size={13} /></button>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
           {mechanics.length > 0 && (

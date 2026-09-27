@@ -1,7 +1,7 @@
 'use client';
 import { ArrowDown, ArrowUp, MessageSquare, PanelTop, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import { createLine, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { createConversation, createLine, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -11,7 +11,7 @@ type Props = {
   /** The line shown as a bubble on the map. */
   activeLineId: string | null;
   onActivate: (id: string) => void;
-  onChange: (fn: (dialogue: DialogueLine[]) => DialogueLine[], coalesceKey?: string) => void;
+  onChange: (fn: (conversations: Conversation[]) => Conversation[], coalesceKey?: string) => void;
 };
 
 /** Role color for a speaker whose name matches a unit in the phase. */
@@ -20,94 +20,132 @@ export function speakerColor(phase: Phase, speaker: string) {
   return unit ? unitTypes[unit.kind as UnitKind].color : '#c9d0cd';
 }
 
+const swap = <T,>(list: T[], i: number, j: number) => { const next = list.slice(); [next[i], next[j]] = [next[j], next[i]]; return next; };
+
 export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange }: Props) {
   const phase = plan.phases[phaseIndex];
-  const lines = phase.dialogue;
+  const conversations = phase.conversations;
+
+  const patchConversation = (id: string, fn: (c: Conversation) => Conversation, key?: string) => onChange(cs => cs.map(c => c.id === id ? fn(c) : c), key);
+  const addConversation = () => {
+    // A new conversation starts from the previous one's trigger so follow-ups are quick to set up.
+    const last = conversations[conversations.length - 1];
+    const conversation = createConversation(last ? { ...last.trigger } : { type: 'time', seconds: 0 }, defaultSpeaker);
+    onChange(cs => [...cs, conversation]);
+    onActivate(conversation.lines[0].id);
+  };
+
+  return (
+    <div className="story">
+      <p className="hint">Group lines spoken together into a conversation. A conversation starts when its trigger fires (boss HP, encounter time, or time after a mechanic) and its lines play in order. The line you are editing appears on the map.</p>
+      {conversations.map((c, ci) => (
+        <section key={c.id} className="conversation" aria-label={c.title || `Conversation ${ci + 1}`}>
+          <header className="conversation-head">
+            <input aria-label="Conversation title" className="conversation-title" value={c.title} maxLength={120} placeholder={`Conversation ${ci + 1}`}
+              onChange={e => patchConversation(c.id, x => ({ ...x, title: e.target.value }), `title-${c.id}`)} />
+            <div className="story-tools">
+              <button type="button" className="icon-button" aria-label="Move conversation up" disabled={ci === 0} onClick={() => onChange(cs => swap(cs, ci, ci - 1))}><ArrowUp size={13} /></button>
+              <button type="button" className="icon-button" aria-label="Move conversation down" disabled={ci === conversations.length - 1} onClick={() => onChange(cs => swap(cs, ci, ci + 1))}><ArrowDown size={13} /></button>
+              <button type="button" className="icon-button danger" aria-label="Delete conversation"
+                onClick={() => { if (c.lines.every(l => !l.text) || confirm(`Delete "${c.title || `Conversation ${ci + 1}`}" and its ${c.lines.length} line${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </header>
+          <TriggerFields phase={phase} trigger={c.trigger} onChange={(t, key) => patchConversation(c.id, x => ({ ...x, trigger: t }), key && `${key}-${c.id}`)} />
+          <ol className="conversation-lines">
+            {c.lines.map((l, li) => (
+              <LineCard key={l.id} phase={phase} plan={plan} phaseIndex={phaseIndex} line={l} index={li} count={c.lines.length} active={l.id === activeLineId}
+                onActivate={() => onActivate(l.id)}
+                onChange={(fn, key) => patchConversation(c.id, x => ({ ...x, lines: x.lines.map(y => y.id === l.id ? fn(y) : y) }), key)}
+                onMove={by => patchConversation(c.id, x => ({ ...x, lines: swap(x.lines, li, li + by) }))}
+                onDelete={() => patchConversation(c.id, x => ({ ...x, lines: x.lines.filter(y => y.id !== l.id) }))} />
+            ))}
+          </ol>
+          <button type="button" className="text-button" onClick={() => {
+            // Follow-up lines default to whoever spoke last in this conversation.
+            const line = createLine(c.lines[c.lines.length - 1]?.speaker ?? defaultSpeaker);
+            patchConversation(c.id, x => ({ ...x, lines: [...x.lines, line] }));
+            onActivate(line.id);
+          }}><Plus size={12} /> Add line</button>
+        </section>
+      ))}
+      <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
+    </div>
+  );
+}
+
+type LineProps = {
+  plan: Plan; phase: Phase; phaseIndex: number; line: DialogueLine; index: number; count: number; active: boolean;
+  onActivate: () => void;
+  onChange: (fn: (l: DialogueLine) => DialogueLine, coalesceKey?: string) => void;
+  onMove: (by: number) => void;
+  onDelete: () => void;
+};
+
+function LineCard({ plan, phase, phaseIndex, line: l, index, count, active, onActivate, onChange, onMove, onDelete }: LineProps) {
+  const patch = (p: Partial<DialogueLine>, key?: string) => onChange(x => ({ ...x, ...p }), key && `${key}-${l.id}`);
+  const patchOption = (id: string, p: Partial<DialogueOption>, key?: string) => onChange(x => ({ ...x, options: x.options.map(o => o.id === id ? { ...o, ...p } : o) }), key && `${key}-${id}`);
   // Every unit on this phase's map can speak, grouped like the toolbox.
   const groups = (Object.keys(unitCategories) as UnitCategory[]).map(cat => ({
     cat, names: [...new Set(phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === cat).map(e => e.name))],
   })).filter(g => g.names.length);
   const known = new Set(['Narrator', ...groups.flatMap(g => g.names)]);
-  const [customIds, setCustomIds] = useState<Set<string>>(new Set());
-
-  const patchLine = (id: string, patch: Partial<DialogueLine>, key?: string) => onChange(d => d.map(l => l.id === id ? { ...l, ...patch } : l), key);
-  const patchOption = (lineId: string, optId: string, patch: Partial<DialogueOption>, key?: string) =>
-    onChange(d => d.map(l => l.id === lineId ? { ...l, options: l.options.map(o => o.id === optId ? { ...o, ...patch } : o) } : l), key);
-  const move = (i: number, by: number) => onChange(d => { const next = d.slice(); [next[i], next[i + by]] = [next[i + by], next[i]]; return next; });
-  const add = () => {
-    // New lines reuse the previous line's trigger so a run of lines at the same moment is quick to write.
-    const line = createLine(lines.length ? { ...lines[lines.length - 1].trigger } : { type: 'time', seconds: 0 }, defaultSpeaker);
-    onChange(d => [...d, line]);
-    onActivate(line.id);
-  };
+  const [customPicked, setCustomPicked] = useState(false);
+  const custom = customPicked || !known.has(l.speaker);
 
   return (
-    <div className="story">
-      <p className="hint">Dialogue spoken during this phase, in order. Each line is triggered by boss HP, encounter time, or time after a mechanic. The line you are editing appears on the map. Add choices to let the raid pick a response; a choice can send the fight to another phase.</p>
-      {lines.map((l, i) => (
-        <article key={l.id} className={`story-line${l.id === activeLineId ? ' active' : ''}`} onFocusCapture={() => onActivate(l.id)} onPointerDown={() => onActivate(l.id)} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
-          <div className="story-line-top">
-            {(() => {
-              const custom = customIds.has(l.id) || !known.has(l.speaker);
-              return (
-                <select aria-label="Speaker" className="story-speaker" value={custom ? '__custom' : l.speaker}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setCustomIds(ids => { const next = new Set(ids); if (v === '__custom') next.add(l.id); else next.delete(l.id); return next; });
-                    if (v !== '__custom') patchLine(l.id, { speaker: v });
-                  }}>
-                  {groups.map(g => (
-                    <optgroup key={g.cat} label={unitCategories[g.cat].name}>
-                      {g.names.map(n => <option key={n} value={n}>{n}</option>)}
-                    </optgroup>
-                  ))}
-                  <optgroup label="Other">
-                    <option value="Narrator">Narrator</option>
-                    <option value="__custom">Custom name…</option>
-                  </optgroup>
-                </select>
-              );
-            })()}
-          </div>
-          {(customIds.has(l.id) || !known.has(l.speaker)) && (
-            <input aria-label="Custom speaker name" className="story-custom" value={l.speaker} maxLength={60} placeholder="Speaker name (not on the map)"
-              onChange={e => patchLine(l.id, { speaker: e.target.value }, `speaker-${l.id}`)} />
-          )}
-          <TriggerFields phase={phase} trigger={l.trigger} onChange={(t, key) => patchLine(l.id, { trigger: t }, key && `${key}-${l.id}`)} />
-          <div className="placement" role="group" aria-label="Show on map">
-            <span>Show</span>
-            <button type="button" aria-pressed={(l.placement ?? 'unit') === 'unit'} onClick={() => patchLine(l.id, { placement: 'unit' })}><MessageSquare size={12} /> On speaker</button>
-            <button type="button" aria-pressed={l.placement === 'top'} onClick={() => patchLine(l.id, { placement: 'top' })}><PanelTop size={12} /> Top banner</button>
-          </div>
-          <textarea aria-label="Line" rows={2} value={l.text} maxLength={2000} placeholder="What do they say?" onChange={e => patchLine(l.id, { text: e.target.value }, `text-${l.id}`)} />
-          {l.options.map((o, oi) => (
-            <div key={o.id} className="story-option">
-              <div className="story-option-top">
-                <span className="option-key">{String.fromCharCode(65 + oi)}</span>
-                <input aria-label="Choice" value={o.text} maxLength={200} placeholder="Choice the raid can pick" onChange={e => patchOption(l.id, o.id, { text: e.target.value }, `opt-${o.id}`)} />
-                <button type="button" className="icon-button danger" aria-label="Remove choice" onClick={() => patchLine(l.id, { options: l.options.filter(x => x.id !== o.id) })}><X size={13} /></button>
-              </div>
-              <input aria-label="Outcome" value={o.outcome} maxLength={1000} placeholder="What happens" onChange={e => patchOption(l.id, o.id, { outcome: e.target.value }, `out-${o.id}`)} />
-              <select aria-label="Then" value={o.goto && plan.phases.some(p => p.id === o.goto) ? o.goto : ''} onChange={e => patchOption(l.id, o.id, { goto: e.target.value || undefined })}>
-                <option value="">Then continue this phase</option>
-                {plan.phases.map((p, pi) => pi !== phaseIndex && <option key={p.id} value={p.id}>Then go to phase {pi + 1}: {p.name}</option>)}
-              </select>
-            </div>
+    <li className={`story-line${active ? ' active' : ''}`} onFocusCapture={onActivate} onPointerDown={onActivate} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
+      <div className="story-line-top">
+        <span className="line-number">{index + 1}</span>
+        <select aria-label="Speaker" className="story-speaker" value={custom ? '__custom' : l.speaker}
+          onChange={e => { const v = e.target.value; setCustomPicked(v === '__custom'); if (v !== '__custom') patch({ speaker: v }); }}>
+          {groups.map(g => (
+            <optgroup key={g.cat} label={unitCategories[g.cat].name}>
+              {g.names.map(n => <option key={n} value={n}>{n}</option>)}
+            </optgroup>
           ))}
-          <div className="story-line-bottom">
-            {l.options.length < 6 && (
-              <button type="button" className="text-button" onClick={() => patchLine(l.id, { options: [...l.options, createOption()] })}><Plus size={12} /> {l.options.length ? 'Add choice' : 'Add choices'}</button>
-            )}
-            <div className="story-tools">
-              <button type="button" className="icon-button" aria-label="Move line up" disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp size={13} /></button>
-              <button type="button" className="icon-button" aria-label="Move line down" disabled={i === lines.length - 1} onClick={() => move(i, 1)}><ArrowDown size={13} /></button>
-              <button type="button" className="icon-button danger" aria-label="Delete line" onClick={() => onChange(d => d.filter(x => x.id !== l.id))}><Trash2 size={13} /></button>
-            </div>
+          <optgroup label="Other">
+            <option value="Narrator">Narrator</option>
+            <option value="__custom">Custom name…</option>
+          </optgroup>
+        </select>
+      </div>
+      {custom && (
+        <input aria-label="Custom speaker name" className="story-custom" value={l.speaker} maxLength={60} placeholder="Speaker name (not on the map)"
+          onChange={e => patch({ speaker: e.target.value }, 'speaker')} />
+      )}
+      <div className="placement" role="group" aria-label="Show on map">
+        <span>Show</span>
+        <button type="button" aria-pressed={(l.placement ?? 'unit') === 'unit'} onClick={() => patch({ placement: 'unit' })}><MessageSquare size={12} /> On speaker</button>
+        <button type="button" aria-pressed={l.placement === 'top'} onClick={() => patch({ placement: 'top' })}><PanelTop size={12} /> Top banner</button>
+      </div>
+      <textarea aria-label="Line" rows={2} value={l.text} maxLength={2000} placeholder="What do they say?" onChange={e => patch({ text: e.target.value }, 'text')} />
+      {l.options.map((o, oi) => (
+        <div key={o.id} className="story-option">
+          <div className="story-option-top">
+            <span className="option-key">{String.fromCharCode(65 + oi)}</span>
+            <input aria-label="Choice" value={o.text} maxLength={200} placeholder="Choice the raid can pick" onChange={e => patchOption(o.id, { text: e.target.value }, 'opt')} />
+            <button type="button" className="icon-button danger" aria-label="Remove choice" onClick={() => patch({ options: l.options.filter(x => x.id !== o.id) })}><X size={13} /></button>
           </div>
-        </article>
+          <input aria-label="Outcome" value={o.outcome} maxLength={1000} placeholder="What happens" onChange={e => patchOption(o.id, { outcome: e.target.value }, 'out')} />
+          <select aria-label="Then" value={o.goto && plan.phases.some(p => p.id === o.goto) ? o.goto : ''} onChange={e => patchOption(o.id, { goto: e.target.value || undefined })}>
+            <option value="">Then continue this phase</option>
+            {plan.phases.map((p, pi) => pi !== phaseIndex && <option key={p.id} value={p.id}>Then go to phase {pi + 1}: {p.name}</option>)}
+          </select>
+        </div>
       ))}
-      <button type="button" className="button story-add" onClick={add}><Plus size={14} /> Add line</button>
-    </div>
+      <div className="story-line-bottom">
+        {l.options.length < 6 && (
+          <button type="button" className="text-button" onClick={() => patch({ options: [...l.options, createOption()] })}><Plus size={12} /> {l.options.length ? 'Add choice' : 'Add choices'}</button>
+        )}
+        <div className="story-tools">
+          <button type="button" className="icon-button" aria-label="Move line up" disabled={index === 0} onClick={() => onMove(-1)}><ArrowUp size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Move line down" disabled={index === count - 1} onClick={() => onMove(1)}><ArrowDown size={13} /></button>
+          <button type="button" className="icon-button danger" aria-label="Delete line" onClick={onDelete}><Trash2 size={13} /></button>
+        </div>
+      </div>
+    </li>
   );
 }
 

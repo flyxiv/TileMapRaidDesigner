@@ -57,7 +57,6 @@ export type Entity = {
 };
 /** A choice offered on a dialogue line. `goto` names the phase the fight jumps to when it is picked. */
 export type DialogueOption = { id: string; text: string; outcome: string; goto?: string };
-/** A line of mid-fight dialogue, spoken on a turn counted from the start of its phase (1 = first turn). */
 /** Where a line appears on the map: over the speaking unit (the default) or as a banner across the top. */
 export type DialoguePlacement = 'unit' | 'top';
 /**
@@ -68,9 +67,12 @@ export type DialogueTrigger =
   | { type: 'hp'; percent: number; target?: string }
   | { type: 'time'; seconds: number }
   | { type: 'mechanic'; mechanic: string; seconds: number };
-export type DialogueLine = { id: string; trigger: DialogueTrigger; speaker: string; text: string; options: DialogueOption[]; placement?: DialoguePlacement };
+/** One line of dialogue. Lines belong to a conversation and play in order. */
+export type DialogueLine = { id: string; speaker: string; text: string; options: DialogueOption[]; placement?: DialoguePlacement };
+/** Lines spoken together, starting when the trigger fires. */
+export type Conversation = { id: string; title: string; trigger: DialogueTrigger; lines: DialogueLine[] };
 export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: 'After mechanic' };
-export type Phase = { id: string; name: string; notes: string; turns: number; terrain: Terrain[][]; entities: Entity[]; dialogue: DialogueLine[] };
+export type Phase = { id: string; name: string; notes: string; turns: number; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[] };
 export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[] };
 
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
@@ -93,7 +95,11 @@ export function phaseTurnRanges(plan: Plan) {
   let start = 1;
   return plan.phases.map(p => { const range = { start, end: start + p.turns - 1 }; start += p.turns; return range; });
 }
-export const createLine = (trigger: DialogueTrigger, speaker: string): DialogueLine => ({ id: uid('line'), trigger, speaker, text: '', options: [] });
+export const createLine = (speaker: string): DialogueLine => ({ id: uid('line'), speaker, text: '', options: [] });
+export const createConversation = (trigger: DialogueTrigger, speaker: string): Conversation => ({ id: uid('conv'), title: '', trigger, lines: [createLine(speaker)] });
+/** Every line in a phase in playing order, with the conversation it belongs to. */
+export const scriptOf = (phase: Phase) => phase.conversations.flatMap(conversation => conversation.lines.map(line => ({ conversation, line })));
+export const lineCount = (phase: Phase) => phase.conversations.reduce((n, c) => n + c.lines.length, 0);
 
 export const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 /** The enemy a boss HP trigger watches: its target, else the phase's first boss, mini-boss or add. */
@@ -227,7 +233,9 @@ export function createPlan(): Plan {
         mech('cleave', 'cone', 'Frontal cleave', 9, 3, 4, 180, 2, 'boss'),
         mech('impact', 'circle', 'Obsidian impact', 13, 8, 1.6, 0, 3),
       ],
-      dialogue: [{ id: 'line-wake', trigger: { type: 'time', seconds: 0 }, speaker: 'Obsidian Sentinel', text: 'Who dares wake the Sanctum?', options: [] }] },
+      conversations: [{ id: 'conv-wake', title: 'Awakening', trigger: { type: 'time', seconds: 0 }, lines: [
+        { id: 'line-wake', speaker: 'Obsidian Sentinel', text: 'Who dares wake the Sanctum?', options: [] },
+      ] }] },
     { id: 'shatter', name: 'Shattered ground', turns: 3, terrain: scorched,
       notes: 'Spread out for the impact. Move to the outer tiles and keep the center clear.',
       entities: [
@@ -235,7 +243,7 @@ export function createPlan(): Plan {
         mech('shatter-1', 'circle', 'Shatter', 9, 8, 2.6, 0, 1),
         mech('debris', 'circle', 'Falling debris', 6, 3, 1.6, 0, 2),
       ],
-      dialogue: [] },
+      conversations: [] },
     { id: 'stand', name: 'The final stand', turns: 3, terrain: baseTerrain(cols, rows),
       notes: 'Regroup at the center. Use defensive cooldowns and finish the Sentinel.',
       entities: [
@@ -243,36 +251,43 @@ export function createPlan(): Plan {
         mech('cleave-2', 'cone', 'Frontal cleave', 9, 5, 3, 180, 1, 'boss'),
         mech('stack', 'stack', 'Stack', 9, 10, 1.6, 0, 2),
       ],
-      dialogue: [{ id: 'line-offer', trigger: { type: 'hp', percent: 30, target: 'boss' }, speaker: 'Obsidian Sentinel', text: 'Kneel, and I will let the rest of you leave.', options: [
+      conversations: [{ id: 'conv-offer', title: 'The offer', trigger: { type: 'hp', percent: 30, target: 'boss' }, lines: [{ id: 'line-offer', speaker: 'Obsidian Sentinel', text: 'Kneel, and I will let the rest of you leave.', options: [
         { id: 'opt-refuse', text: 'Refuse', outcome: 'The Sentinel enrages. Finish it before the stack point collapses.' },
         { id: 'opt-kneel', text: 'Kneel', outcome: 'The Sentinel strikes the kneeling player. Healers spot-heal them next turn.' },
-      ] }] },
+      ] }] }] },
   ] };
 }
 
 /** Upgrades a version 1 plan (shared terrain, no countdowns) to the current shape. */
 export function migratePlan(value: unknown): unknown {
-  const p = value as { version?: number; terrain?: unknown; phases?: { entities?: Record<string, unknown>[]; dialogue?: unknown }[] };
+  const p = value as { version?: number; terrain?: unknown; phases?: { entities?: Record<string, unknown>[]; dialogue?: unknown; conversations?: unknown }[] };
   if (!p || typeof p !== 'object' || !Array.isArray(p.phases)) return value;
-  // Plans saved before dialogue existed have no script yet.
-  // Lines written before triggers existed were timed by turn; they start at encounter time 0:00.
-  const needsTrigger = (l: unknown) => !!l && typeof l === 'object' && !('trigger' in l);
   if (p.version === 2) {
-    if (p.phases.every(f => f && Array.isArray(f.dialogue) && !(f.dialogue as unknown[]).some(needsTrigger))) return value;
-    return { ...p, phases: p.phases.map(f => !f ? f : {
-      ...f,
-      dialogue: Array.isArray(f.dialogue) ? (f.dialogue as Record<string, unknown>[]).map(l => {
-        if (!needsTrigger(l)) return l;
-        const { turn: _turn, ...rest } = l;
-        return { ...rest, trigger: { type: 'time', seconds: 0 } };
-      }) : [],
-    }) };
+    if (p.phases.every(f => f && Array.isArray(f.conversations))) return value;
+    return { ...p, phases: p.phases.map(f => f && !Array.isArray(f.conversations) ? toConversations(f) : f) };
   }
   if (p.version !== 1) return value;
   return {
     ...p, version: 2, terrain: undefined,
-    phases: p.phases.map(f => ({ ...f, turns: 1, terrain: p.terrain, dialogue: [], entities: Array.isArray(f.entities) ? f.entities.map(e => ({ code: '', turns: e.kind === 'marker' ? 0 : 2, ...e })) : f.entities })),
+    phases: p.phases.map(f => ({ ...f, turns: 1, terrain: p.terrain, conversations: [], entities: Array.isArray(f.entities) ? f.entities.map(e => ({ code: '', turns: e.kind === 'marker' ? 0 : 2, ...e })) : f.entities })),
   };
+}
+
+/**
+ * Older plans kept a flat list of lines (`dialogue`), each with its own trigger, and before that a turn number.
+ * Consecutive lines with the same trigger become one conversation; lines without a trigger start at 0:00.
+ */
+function toConversations<F extends { dialogue?: unknown }>(phase: F) {
+  const { dialogue, ...rest } = phase;
+  const conversations: Conversation[] = [];
+  for (const raw of Array.isArray(dialogue) ? dialogue as Record<string, unknown>[] : []) {
+    if (!raw || typeof raw !== 'object') continue;
+    const { trigger = { type: 'time', seconds: 0 }, turn: _turn, ...line } = raw;
+    const last = conversations[conversations.length - 1];
+    if (last && JSON.stringify(last.trigger) === JSON.stringify(trigger)) last.lines.push(line as DialogueLine);
+    else conversations.push({ id: uid('conv'), title: '', trigger: trigger as DialogueTrigger, lines: [line as DialogueLine] });
+  }
+  return { ...rest, conversations };
 }
 
 export function validatePlan(value: unknown): value is Plan {
@@ -295,12 +310,14 @@ export function validatePlan(value: unknown): value is Plan {
         Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 && int(e.turns, 0, 9) &&
         num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
         (e.anchor === undefined || typeof e.anchor === 'string')) &&
-      Array.isArray(f.dialogue) && f.dialogue.length <= 200 && new Set(f.dialogue.map(l => l?.id)).size === f.dialogue.length &&
-      f.dialogue.every(l => l && typeof l.id === 'string' && validTrigger(l.trigger) && typeof l.speaker === 'string' && l.speaker.length <= 60 &&
+      Array.isArray(f.conversations) && f.conversations.length <= 100 && new Set(f.conversations.map(c => c?.id)).size === f.conversations.length &&
+      f.conversations.every(c => c && typeof c.id === 'string' && typeof c.title === 'string' && c.title.length <= 120 && validTrigger(c.trigger) &&
+        Array.isArray(c.lines) && c.lines.length <= 200 && new Set(c.lines.map(l => l?.id)).size === c.lines.length &&
+      c.lines.every(l => l && typeof l.id === 'string' && typeof l.speaker === 'string' && l.speaker.length <= 60 &&
         typeof l.text === 'string' && l.text.length <= 2000 && Array.isArray(l.options) && l.options.length <= 6 &&
         (l.placement === undefined || l.placement === 'unit' || l.placement === 'top') &&
         l.options.every(o => o && typeof o.id === 'string' && typeof o.text === 'string' && o.text.length <= 200 &&
-          typeof o.outcome === 'string' && o.outcome.length <= 1000 && (o.goto === undefined || typeof o.goto === 'string'))));
+          typeof o.outcome === 'string' && o.outcome.length <= 1000 && (o.goto === undefined || typeof o.goto === 'string')))));
 }
 
 /**
