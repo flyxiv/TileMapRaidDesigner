@@ -89,7 +89,7 @@ export function createBlankPlan(name: string, cols: number, rows: number, layout
   if (withParty && canHoldParty(cols, rows)) {
     const cx = Math.floor(cols / 2);
     const at = (x: number) => Math.max(m, Math.min(cols - 1 - m, x));
-    const unit = (id: string, kind: UnitKind, name: string, code: string, x: number, y: number): Entity => ({ id, kind, name, code, x: at(x), y, radius: 1, rotation: 0, turns: 0 });
+    const unit = (id: string, kind: UnitKind, name: string, code: string, x: number, y: number): Entity => ({ id, kind, name, code, x: at(x), y, radius: 1, rotation: 0 });
     entities.push(
       unit('boss', 'boss', 'Boss', 'BOSS', cx - 1, m + 1),
       unit('mt', 'tank', 'Main tank', 'MT', cx - 1, m + 4), unit('ot', 'tank', 'Off tank', 'OT', cx, m + 4),
@@ -98,5 +98,5 @@ export function createBlankPlan(name: string, cols: number, rows: number, layout
       unit('h1', 'healer', 'Healer 1', 'H1', cx - 2, m + 8), unit('h2', 'healer', 'Healer 2', 'H2', cx + 1, m + 8),
     );
   }
-  return { version: 2, name, cols, rows, phases: [{ id: uid('phase'), name: 'Phase 1', notes: '', turns: 3, terrain, entities, conversations: [] }] };
+  return { version: 2, name, cols, rows, phases: [{ id: uid('phase'), name: 'Phase 1', notes: '', terrain, entities, conversations: [] }] };
 }

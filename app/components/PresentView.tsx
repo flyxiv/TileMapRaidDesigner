@@ -1,8 +1,9 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { isMechanic, lineCount, mechanicTone, scriptOf, triggerLabel, mechanicTypes, type MechanicKind, phaseTurnRanges, turnRangeText, type Plan } from '../plan';
+import { isMechanic, lineCount, mechanicTone, scriptOf, triggerLabel, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
+import { Glyph } from './glyphs';
 import { speakerColor } from './StoryPanel';
 
 function steps(notes: string) {
@@ -12,7 +13,6 @@ function steps(notes: string) {
 
 export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; index: number; onIndex: (i: number) => void; onExit: () => void }) {
   const phase = plan.phases[index];
-  const ranges = phaseTurnRanges(plan);
   const stage = useRef<HTMLElement>(null);
   const [cell, setCell] = useState(36);
   const [chosen, setChosen] = useState<Record<string, string>>({});
@@ -66,7 +66,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
       </header>
       <div className="present-body">
         <section className="present-story">
-          <div className="present-kicker">PHASE {index + 1} OF {plan.phases.length}<span />{turnRangeText(ranges[index]).toUpperCase()}</div>
+          <div className="present-kicker">PHASE {index + 1} OF {plan.phases.length}</div>
           <h1>{phase.name}</h1>
           <ol className="present-steps">
             {steps(phase.notes).map((s, i) => <li key={i}><span>{i + 1}</span>{s}</li>)}
@@ -113,8 +113,8 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
               <div className="section-title">Watch for</div>
               {mechanics.map(m => (
                 <div key={m.id} className="watch-row">
-                  <span className="watch-badge" style={{ background: mechanicTone(m) }}>{m.kind !== 'marker' && m.turns > 0 ? m.turns : ''}</span>
-                  <span><b>{m.name}</b><small>{mechanicTypes[m.kind as MechanicKind].name} · {m.kind === 'marker' ? 'Safe tiles for this phase' : m.turns === 0 ? 'Active for the whole phase' : m.turns === 1 ? 'Resolves next turn' : `Resolves in ${m.turns} turns`}</small></span>
+                  <span className="watch-badge" style={{ background: mechanicTone(m) }}><Glyph kind={m.kind} size={15} color="#141819" strokeWidth={2.2} /></span>
+                  <span><b>{m.name}</b><small>{mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</small></span>
                 </div>
               ))}
             </div>
@@ -129,11 +129,11 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
           <button type="button" aria-label="Previous phase" disabled={index === 0} onClick={() => onIndex(index - 1)}><ChevronLeft size={18} /></button>
           <button type="button" aria-label="Next phase" className="primary" disabled={index === plan.phases.length - 1} onClick={() => onIndex(index + 1)}><ChevronRight size={18} /></button>
         </div>
-        <div className="present-segments" style={{ gridTemplateColumns: plan.phases.map(p => `${p.turns}fr`).join(' ') }}>
+        <div className="present-segments" style={{ gridTemplateColumns: `repeat(${plan.phases.length}, minmax(0, 1fr))` }}>
           {plan.phases.map((p, i) => (
             <button key={p.id} type="button" aria-current={i === index ? 'step' : undefined} className={i === index ? 'current' : i < index ? 'done' : ''} onClick={() => onIndex(i)}>
-              <span className="ticks">{Array.from({ length: p.turns }, (_, t) => <i key={t} />)}</span>
-              <span className="seg-label"><b>{p.name}</b><span>{turnRangeText(ranges[i])}</span></span>
+              <span className="ticks"><i /></span>
+              <span className="seg-label"><b>{p.name}</b></span>
             </button>
           ))}
         </div>

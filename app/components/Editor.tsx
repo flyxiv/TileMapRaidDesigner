@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
-  terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
+  MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
@@ -86,7 +86,6 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const phase = plan.phases[pi];
   const prevPhase = pi > 0 ? plan.phases[pi - 1] : null;
   const selected = phase.entities.find(e => e.id === selectedId) ?? null;
-  const ranges = phaseTurnRanges(plan);
 
   const notify = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(t => t === msg ? null : t), 2600); }, []);
 
@@ -234,7 +233,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     let e: Entity;
     if (item.type === 'unit') {
       const { code, name } = nextCode(phase, item.kind);
-      e = clampEntity({ id: uid(item.kind), kind: item.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0, turns: 0 }, plan);
+      e = clampEntity({ id: uid(item.kind), kind: item.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0 }, plan);
     } else if (item.type === 'mechanic') {
       e = createMechanic(item.kind, tile[0], tile[1]);
       // Dropped on a unit: the telegraph starts from that unit, and cones and lines aim where it faces.
@@ -258,7 +257,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
   const addPhase = () => {
-    const next: Phase = { id: uid('phase'), name: `Phase ${plan.phases.length + 1}`, notes: '', turns: 3, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })), conversations: [] };
+    const next: Phase = { id: uid('phase'), name: `Phase ${plan.phases.length + 1}`, notes: '', terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })), conversations: [] };
     commit(p => ({ ...p, phases: [...p.phases.slice(0, pi + 1), next, ...p.phases.slice(pi + 1)] }));
     setPhaseIndex(pi + 1);
   };
@@ -414,7 +413,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <div className="grid-3">
                 {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => (
                   <button key={k} type="button" className={`tool-tile tall${isTool({ type: 'mechanic', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'mechanic', kind: k })} title={mechanicTypes[k].description} onClick={() => setTool({ type: 'mechanic', kind: k })} {...dragProps({ type: 'mechanic', kind: k })}>
-                    <Glyph kind={k} size={22} color={mechanicTone({ kind: k, turns: 2 })} strokeWidth={1.8} />{mechanicTypes[k].name}
+                    <Glyph kind={k} size={22} color={mechanicTone({ kind: k })} strokeWidth={1.8} />{mechanicTypes[k].name}
                   </button>
                 ))}
               </div>
@@ -434,13 +433,10 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         <main className="editor">
           <div className="editor-heading">
             <div className="phase-heading">
-              <div className="eyebrow">Phase {pi + 1} of {plan.phases.length} · {turnRangeText(ranges[pi])}</div>
+              <div className="eyebrow">Phase {pi + 1} of {plan.phases.length}</div>
               <input aria-label="Phase name" className="phase-name" value={phase.name} maxLength={120} onChange={e => commit(p => updatePhase(p, pi, f => ({ ...f, name: e.target.value })), `phase-name-${phase.id}`)} />
             </div>
             <div className="heading-actions">
-              <label className="turns-field">Turns
-                <input type="number" min={1} max={20} value={phase.turns} onChange={e => { const n = Math.max(1, Math.min(20, Math.round(Number(e.target.value)) || 1)); commit(p => updatePhase(p, pi, f => ({ ...f, turns: n })), `phase-turns-${phase.id}`); }} />
-              </label>
               <button type="button" className="icon-button bordered" aria-label="Previous phase" disabled={pi === 0} onClick={() => goPhase(pi - 1)}>‹</button>
               <button type="button" className="icon-button bordered" aria-label="Next phase" disabled={pi === plan.phases.length - 1} onClick={() => goPhase(pi + 1)}>›</button>
             </div>
@@ -476,7 +472,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             </div>
             <div className="map-legend">
               <span><i className="party" />Characters</span><span><i className="enemy" />Enemies</span><span><i className="neutral" />Neutral</span>
-              <span><i className="tele" />Telegraph</span><span><i className="hot" />Resolves next turn</span>
+              <span><i className="tele" />Telegraph</span>
               <span><i className="move" />Movement</span>
             </div>
           </div>
@@ -493,9 +489,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <div className="phase-list">
               {plan.phases.map((p, i) => (
                 <button key={p.id} type="button" className={`phase-card${i === pi ? ' active' : ''}`} aria-current={i === pi ? 'step' : undefined} onClick={() => setPhaseIndex(i)}>
-                  <span className="phase-number"><span>Phase {i + 1}{p.conversations.length > 0 && <span className="phase-lines" title={`${p.conversations.length} conversation${p.conversations.length > 1 ? 's' : ''}`}><MessageSquare size={10} /> {p.conversations.length}</span>}</span><span>{ranges[i].start === ranges[i].end ? `T${ranges[i].start}` : `T${ranges[i].start}–${ranges[i].end}`}</span></span>
+                  <span className="phase-number"><span>Phase {i + 1}{p.conversations.length > 0 && <span className="phase-lines" title={`${p.conversations.length} conversation${p.conversations.length > 1 ? 's' : ''}`}><MessageSquare size={10} /> {p.conversations.length}</span>}</span></span>
                   <b>{p.name}</b>
-                  <span className="ticks">{Array.from({ length: p.turns }, (_, t) => <i key={t} />)}</span>
+                  <span className="ticks"><i /></span>
                 </button>
               ))}
             </div>

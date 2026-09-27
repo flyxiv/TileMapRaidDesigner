@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { aims, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { aims, mechanicTypes, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -106,9 +106,6 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
         <pattern id="rd-share" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <rect width="7" height="7" fill="rgba(198,235,149,0.12)" /><rect width="3" height="7" fill="rgba(198,235,149,0.3)" />
         </pattern>
-        <pattern id="rd-hot" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width="7" height="7" fill="rgba(236,140,96,0.28)" /><rect width="3" height="7" fill="rgba(236,140,96,0.58)" />
-        </pattern>
         <filter id="rd-shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#000" floodOpacity="0.4" /></filter>
       </defs>
 
@@ -172,7 +169,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
 function HazardTile({ m, x, y, strength, C }: { m: Entity; x: number; y: number; strength: number; C: number }) {
   if (m.kind === 'marker') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(198,235,149,0.2)" stroke="rgba(198,235,149,0.35)" />;
   if (m.kind === 'tower') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(134,197,242,0.22)" stroke="rgba(134,197,242,0.4)" />;
-  const fill = m.kind === 'stack' ? 'url(#rd-share)' : m.turns === 1 ? 'url(#rd-hot)' : 'url(#rd-tele)';
+  const fill = m.kind === 'stack' ? 'url(#rd-share)' : 'url(#rd-tele)';
   return <rect x={x * C} y={y * C} width={C} height={C} fill={fill} opacity={m.kind === 'armageddon' ? 0.75 : strength} />;
 }
 
@@ -239,18 +236,14 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
   else if (m.kind === 'marker') y = oy + 1.25;
   else if (anchor) y = oy + Math.min(m.radius, 1.6) + 0.35; // keep the label off the targeted unit
-  const tone = mechanicTone(m), badge = m.kind !== 'marker' && m.turns > 0;
+  const tone = mechanicTone(m);
   const label = m.kind === 'tower' ? `${m.name} ×${m.soak ?? 1}` : m.name;
-  const w = label.length * 5.9 + (badge ? 30 : 16), h = 22;
+  const w = label.length * 5.9 + 16, h = 22;
   return (
     <g data-entity={m.id} className={`mech-label${selected ? ' selected' : ''}`} transform={`translate(${x * C - w / 2} ${y * C - h / 2})`}>
-      <title>{m.kind === 'marker' ? m.name : `${m.name}: ${m.turns === 0 ? 'lasts the phase' : `resolves in ${m.turns} turn${m.turns > 1 ? 's' : ''}`}`}</title>
+      <title>{`${m.name}: ${mechanicTypes[m.kind as MechanicKind].description}`}</title>
       <rect width={w} height={h} rx={h / 2} fill="rgba(15,19,20,0.75)" stroke={tone} />
-      {badge && <>
-        <circle cx={h / 2} cy={h / 2} r={8} fill={tone} />
-        <text x={h / 2} y={h / 2 + 0.5} textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight="700" fill="#141819">{m.turns}</text>
-      </>}
-      <text x={badge ? 25 : 8} y={h / 2 + 0.5} dominantBaseline="central" fontSize="10" fontWeight="600" fill={tone}>{label}</text>
+      <text x={8} y={h / 2 + 0.5} dominantBaseline="central" fontSize="10" fontWeight="600" fill={tone}>{label}</text>
     </g>
   );
 }

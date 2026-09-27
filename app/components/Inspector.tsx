@@ -26,7 +26,7 @@ export function Inspector({ plan, phase, prevPhase, entity, onChange, onDelete, 
         <div className="chip-row">
           {mechanics.map(m => (
             <button key={m.id} type="button" className={`mech-chip${entity?.id === m.id ? ' active' : ''}`} style={{ '--tone': mechanicTone(m) } as React.CSSProperties} aria-pressed={entity?.id === m.id} onClick={() => onSelect(m.id)}>
-              <span className="mech-badge">{m.kind !== 'marker' && m.turns > 0 ? m.turns : ''}</span>{m.name}
+              <span className="mech-badge"><Glyph kind={m.kind} size={11} color="#141819" strokeWidth={2.4} /></span>{m.name}
             </button>
           ))}
         </div>
@@ -167,15 +167,5 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
         <input type="range" min={0} max={345} step={15} value={m.rotation} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${m.id}`)} />
       </label>
     )}
-    <div className="field">
-      <span className="field-line">Resolves in <b>{m.turns === 0 ? 'Lasts the phase' : m.turns === 1 ? 'Next turn' : `${m.turns} turns`}</b></span>
-      <div className="turn-steps" role="group" aria-label="Resolves in">
-        {[0, 1, 2, 3, 4, 5].map(n => (
-          <button key={n} type="button" aria-pressed={m.turns === n} className={m.turns === n ? 'active' : ''} style={m.turns === n ? { background: tone } : undefined} onClick={() => onChange({ turns: n })}>
-            {n === 0 ? '∞' : n}
-          </button>
-        ))}
-      </div>
-    </div>
   </>;
 }

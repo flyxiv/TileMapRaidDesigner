@@ -90,8 +90,6 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .phase-name { width: 100%; border: 0; background: none; border-radius: 0; padding: 0; font: 500 22px var(--display); letter-spacing: -.6px; }
 .phase-name:focus { outline: none; box-shadow: 0 1px 0 var(--accent); }
 .heading-actions { display: flex; align-items: center; gap: 6px; }
-.turns-field { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-right: 8px; }
-.turns-field input { width: 56px; height: 32px; padding: 0 8px; }
 .icon-button { width: 32px; height: 30px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: #9ca7a2; font-size: 18px; }
 .icon-button.active { background: #35412b; color: var(--accent); }
 .icon-button.bordered { border: 1px solid var(--line); background: #1e2424; height: 32px; }
@@ -115,7 +113,6 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .map-legend .party { border-radius: 2px; border: 1.5px solid #8babeb; }
 .map-legend .enemy { border-radius: 2px; border: 1.5px solid #e49780; }
 .map-legend .tele { background: repeating-linear-gradient(45deg, var(--tele) 0 2px, transparent 2px 4px); }
-.map-legend .hot { background: repeating-linear-gradient(45deg, var(--hot) 0 2px, transparent 2px 4px); }
 .map-legend .move { width: 12px; height: 0; border-top: 1.5px dashed var(--accent); }
 
 .phase-panel { flex-shrink: 0; padding: 14px 20px; background: #191e1f; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
@@ -149,9 +146,6 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .span-2 { grid-column: span 2; }
 .move-note { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 6px; background: #212a22; font-size: 11px; color: #a9b8a1; }
 .move-note b { color: var(--accent); font-weight: 600; }
-.turn-steps { display: flex; gap: 4px; }
-.turn-steps button { flex: 1; height: 28px; border-radius: 5px; font-size: 11px; font-weight: 600; background: var(--panel-2); border: 1px solid #343b3a; color: #7f8c85; }
-.turn-steps button.active { border-color: transparent; color: #141819; }
 .delete-button { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; color: var(--danger); font-size: 11px; }
 .notes-section { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 190px; }
 .notes-section textarea { flex: 1; min-height: 120px; resize: none; padding: 12px; font-size: 12px; line-height: 1.7; color: #b3beb4; }
