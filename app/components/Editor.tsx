@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  unitFacing, MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -209,7 +209,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         const [cx, cy] = isUnit(target.kind) ? center(target) : mechanicOrigin(target, tphase.entities).point;
         const step = isUnit(target.kind) ? 45 : 15, deg = (Math.atan2(p.point[0] - cx, -(p.point[1] - cy)) * 180) / Math.PI;
         const rotation = ((Math.round(deg / step) * step) % 360 + 360) % 360;
-        if (rotation !== target.rotation) setTarget({ rotation });
+        if (rotation !== target.rotation || target.faceToward) setTarget({ rotation, faceToward: undefined });
       }
       if (g.mode === 'resize' && target && p.point && g.corner) {
         if (isUnit(target.kind)) {
@@ -479,7 +479,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       if (mod) return;
       if (k === 'escape' && picking) { setPicking(null); return; }
       if (k === 'escape') { setSelectedId(null); setShortcuts(false); setMenu(false); }
-      else if (k === 'r' && selected && isUnit(selected.kind)) patchEntity(selected.id, { rotation: (selected.rotation + (e.shiftKey ? 315 : 45)) % 360 }, `rotate-${selected.id}`);
+      else if (k === 'r' && selected && isUnit(selected.kind)) patchEntity(selected.id, { rotation: (unitFacing(selected, targetPhase.entities) - (unitFacing(selected, targetPhase.entities) % 45) + (e.shiftKey ? 315 : 45)) % 360, faceToward: undefined }, `rotate-${selected.id}`);
       else if (k === 'p') setPresenting(true);
       else if (k === '[') goPhase(pi - 1);
       else if (k === ']') goPhase(pi + 1);

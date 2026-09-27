@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { unitFacing, aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
 import { EventIcon } from './EventIcon';
@@ -73,6 +73,7 @@ function PositionFields({ plan, e, onChange }: { plan: Plan; e: Entity; onChange
 }
 
 function UnitFields({ plan, phase, prevPhase, u, onChange }: { plan: Plan; phase: Phase; prevPhase: Phase | null; u: Entity; onChange: Props['onChange'] }) {
+  const toward = u.faceToward ? phase.entities.find(e => e.id === u.faceToward && isUnit(e.kind)) : undefined;
   const type = unitTypes[u.kind as UnitKind];
   const before = prevPhase?.entities.find(e => e.id === u.id);
   const moved = before && (before.x !== u.x || before.y !== u.y);
@@ -102,10 +103,29 @@ function UnitFields({ plan, phase, prevPhase, u, onChange }: { plan: Plan; phase
       </label>
     </div>
     <PositionFields plan={plan} e={u} onChange={onChange} />
-    <label className="field">
-      <span className="field-line">Facing <b>{facingLabel(u.rotation)}</b></span>
-      <input type="range" min={0} max={315} step={45} value={u.rotation - (u.rotation % 45)} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${u.id}`)} />
+    <label className="field">Faces
+      <select value={toward ? toward.id : ''} onChange={ev => onChange(ev.target.value
+        ? { faceToward: ev.target.value }
+        : { faceToward: undefined, rotation: unitFacing(u, phase.entities) - (unitFacing(u, phase.entities) % 45) })}>
+        <option value="">A direction</option>
+        {(Object.keys(unitCategories) as UnitCategory[]).map(cat => {
+          const units = phase.entities.filter(e => e.id !== u.id && isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === cat);
+          return units.length > 0 && (
+            <optgroup key={cat} label={unitCategories[cat].name}>
+              {units.map(e => <option key={e.id} value={e.id}>Toward {e.name}</option>)}
+            </optgroup>
+          );
+        })}
+      </select>
     </label>
+    {toward
+      ? <p className="hint">Keeps facing {toward.name} ({facingLabel(unitFacing(u, phase.entities))}), even as either of them moves.</p>
+      : (
+        <label className="field">
+          <span className="field-line">Facing <b>{facingLabel(u.rotation)}</b></span>
+          <input type="range" min={0} max={315} step={45} value={u.rotation - (u.rotation % 45)} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${u.id}`)} />
+        </label>
+      )}
     <div className="field">
       <span className="field-line">Marker <b>{u.marker ? markerTypes[u.marker].name : 'None'}</b></span>
       <div className="marker-picker" role="group" aria-label="Marker">

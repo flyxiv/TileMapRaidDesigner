@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { waymarkId, waymarkTypes, type WaymarkKey, aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { resolveFacing, waymarkId, waymarkTypes, type WaymarkKey, aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { MarkerShape, glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -47,7 +47,9 @@ const terrainFill: Record<string, string> = {
 export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, stage, transform, onPointer, onLeave, onEntityMenu, onDragTile, onDropTile, className }, ref,
 ) {
-  const phase = plan.phases[phaseIndex];
+  // Units with a facing target are drawn turned toward it.
+  const raw = plan.phases[phaseIndex];
+  const phase = raw.entities.some(e => e.faceToward) ? { ...raw, entities: resolveFacing(raw.entities) } : raw;
   const prev = phaseIndex > 0 ? plan.phases[phaseIndex - 1] : null;
   const G = coords ? 20 : 0;
   const W = plan.cols * C + G, H = plan.rows * C + G;

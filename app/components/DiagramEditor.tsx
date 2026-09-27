@@ -60,7 +60,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
         const [cx, cy] = isUnit(target.kind) ? center(target) : mechanicOrigin(target, d.entities).point;
         const step = isUnit(target.kind) ? 45 : 15, deg = (Math.atan2(p.point[0] - cx, -(p.point[1] - cy)) * 180) / Math.PI;
         const rotation = ((Math.round(deg / step) * step) % 360 + 360) % 360;
-        if (rotation !== target.rotation) patch(target.id, { rotation });
+        if (rotation !== target.rotation || target.faceToward) patch(target.id, { rotation, faceToward: undefined });
       }
       if (g.mode === 'resize' && target && p.point && g.corner) {
         if (isUnit(target.kind)) {
@@ -156,8 +156,8 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
         <div className="diagram-selection">
           <b>{selected.name}</b>
           <span>{isUnit(selected.kind) ? unitTypes[selected.kind as UnitKind].name : mechanicTypes[selected.kind as MechanicKind].name}</span>
-          <button type="button" className="icon-button" aria-label="Rotate left" onClick={() => patch(selected.id, { rotation: (selected.rotation + (isUnit(selected.kind) ? 315 : 345)) % 360 }, `${key}-rot`)}><RotateCcw size={13} /></button>
-          <button type="button" className="icon-button" aria-label="Rotate right" onClick={() => patch(selected.id, { rotation: (selected.rotation + (isUnit(selected.kind) ? 45 : 15)) % 360 }, `${key}-rot`)}><RotateCw size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Rotate left" onClick={() => patch(selected.id, { rotation: (selected.rotation + (isUnit(selected.kind) ? 315 : 345)) % 360, faceToward: undefined }, `${key}-rot`)}><RotateCcw size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Rotate right" onClick={() => patch(selected.id, { rotation: (selected.rotation + (isUnit(selected.kind) ? 45 : 15)) % 360, faceToward: undefined }, `${key}-rot`)}><RotateCw size={13} /></button>
           <button type="button" className="text-button danger" onClick={() => remove(selected.id)}><Trash2 size={12} /> Remove</button>
         </div>
       )}

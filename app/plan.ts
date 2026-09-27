@@ -68,6 +68,8 @@ export type Entity = {
   size?: number;
   /** Cones and lines that start from a unit: aim the way that unit faces instead of their own rotation. */
   followFacing?: boolean;
+  /** Units only, optional: another unit (by id) this one keeps facing, wherever either stands. Overrides `rotation`. */
+  faceToward?: string;
   /** Telegraphs only: when it goes off, and the mechanic page that explains it. */
   trigger?: DialogueTrigger;
   page?: string;
@@ -242,7 +244,7 @@ export function stagePhase(phase: Phase, plan: Plan, actions: ActionStep[]): Pha
     const a = step.action;
     if (a.kind === 'motion') continue;
     const rotation = a.kind === 'face' ? faceRotation(step, entities) : undefined;
-    entities = entities.map(e => e.id !== step.actor ? e : a.kind === 'move' ? clampEntity({ ...e, x: a.x, y: a.y }, plan) : { ...e, rotation: rotation ?? e.rotation });
+    entities = entities.map(e => e.id !== step.actor ? e : a.kind === 'move' ? clampEntity({ ...e, x: a.x, y: a.y }, plan) : { ...e, rotation: rotation ?? e.rotation, faceToward: undefined });
   }
   return entities === phase.entities ? phase : { ...phase, entities };
 }
@@ -342,8 +344,19 @@ export const aimedAtTargets = (m: Entity, entities: Entity[]) => m.kind === 'lin
 /** Direction a telegraph points, in compass degrees: its own rotation, or its unit's facing when it follows it. */
 export function mechanicFacing(m: Entity, entities: Entity[]) {
   const anchor = m.followFacing ? mechanicOrigin(m, entities).anchor : undefined;
-  return anchor ? anchor.rotation : m.rotation;
+  return anchor ? unitFacing(anchor, entities) : m.rotation;
 }
+/** Where a unit faces: toward its facing target when it has one (in whole degrees), else its own rotation. */
+export function unitFacing(u: Entity, entities: Entity[]) {
+  const target = u.faceToward && u.faceToward !== u.id ? entities.find(e => e.id === u.faceToward && isUnit(e.kind)) : undefined;
+  if (!target) return u.rotation;
+  const [ax, ay] = center(u), [tx, ty] = center(target);
+  if (Math.abs(tx - ax) < 0.01 && Math.abs(ty - ay) < 0.01) return u.rotation;
+  return ((Math.round(Math.atan2(tx - ax, -(ty - ay)) * 180 / Math.PI) % 360) + 360) % 360;
+}
+/** Entities with each unit's rotation set to where it actually faces (see `unitFacing`), for drawing. */
+export const resolveFacing = (entities: Entity[]): Entity[] =>
+  entities.some(e => e.faceToward) ? entities.map(e => e.faceToward ? { ...e, rotation: unitFacing(e, entities) } : e) : entities;
 export const aims = (kind: Kind) => kind === 'cone' || kind === 'line';
 
 /** Walkable tiles a mechanic covers. Walls and void never take damage. */
@@ -558,7 +571,7 @@ export function validatePlan(value: unknown): value is Plan {
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
       num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.image === undefined || (typeof e.image === 'string' && e.image.length <= 80)) && (e.marker === undefined || Object.hasOwn(markerTypes, e.marker)) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
-      (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
+      (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.faceToward === undefined || typeof e.faceToward === 'string') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const validWaymarks = (w: Waymarks | undefined, cols: number, rows: number) => w === undefined || (!!w && typeof w === 'object' && !Array.isArray(w) &&
     Object.entries(w).every(([k, v]) => Object.hasOwn(waymarkTypes, k) && Array.isArray(v) && v.length === 2 && int(v[0], 0, cols - 1) && int(v[1], 0, rows - 1)));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
