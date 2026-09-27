@@ -1,7 +1,7 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight, Footprints, Hand, RotateCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { castLabel, conversationScenes, sceneAtStep, diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
+import { withTelegraphs, castLabel, conversationScenes, sceneAtStep, diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
@@ -63,7 +63,8 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
     return before?.conversation ? conversationScenes(phase, plan).get(before.conversation.id)?.end ?? phase : phase;
   })();
   const mechanicStep = script[line]?.mechanic;
-  const stagedPlan = staged === phase ? plan : { ...plan, phases: plan.phases.map((p, i) => i === index ? staged : p) };
+  const shownScene = withTelegraphs(staged, script[line]?.mechanic ? [script[line].mechanic!.id] : []);
+  const stagedPlan = { ...plan, phases: plan.phases.map((p, i) => i === index ? shownScene : p) };
   const acting = step && isAction(step) ? step : undefined;
   const actor = acting && staged.entities.find(e => e.id === acting.actor);
   const stageMark = acting && actor ? { step: acting, from: actor, text: actionText(acting, phase), rotation: faceRotation(acting, staged.entities) } : null;

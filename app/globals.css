@@ -461,7 +461,6 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .story.wide .conversation { flex-direction: row; align-items: flex-start; gap: 18px; padding: 16px; }
 .story.wide .conv-main { flex: 1 1 320px; }
 .conv-side { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 12px; }
-.story.wide .mechanic-item { max-width: 560px; }
 /* Timeline main screen */
 .timeline-main { flex: 1; min-height: 0; overflow-y: auto; background: var(--bg); }
 .timeline-start { border-color: #3a4b35; background: #1a211b; }
@@ -492,7 +491,6 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .map-preview-more { font-size: 11px; font-weight: 600; color: var(--muted); padding: 0 4px 4px; }
 .pages-item .map-previews { margin-top: 4px; }
 .mechanic-menu button .map-previews { margin-left: auto; }
-.story.wide .conversation.mechanic-item { flex-direction: column; align-items: stretch; gap: 10px; }
 .pages-details { overflow-y: auto; }
 .pages-details-hint { padding: 20px 18px; }
 .page-blocks { display: flex; flex-direction: column; gap: 12px; }

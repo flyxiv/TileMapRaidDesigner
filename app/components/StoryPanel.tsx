@@ -30,6 +30,7 @@ type Props = {
   /** Main-screen layout: each conversation shows `renderMap` beside its script, and `start` heads the timeline. */
   wide?: boolean;
   renderMap?: (c: Conversation) => React.ReactNode;
+  renderMechanicMap?: (m: Entity) => React.ReactNode;
   start?: React.ReactNode;
   /** Add a telegraph for a mechanic page to the end of the timeline. */
   onNewMechanic: (pageId: string) => void;
@@ -189,7 +190,7 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onDeleteMechanic, onCreatePage, onOpenPage, onNewMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, start }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onDeleteMechanic, onCreatePage, onOpenPage, onNewMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, renderMechanicMap, start }: Props) {
   const [mechanicMenu, setMechanicMenu] = useState(false);
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
@@ -238,7 +239,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
           {zone(ci)}
           <MechanicItem m={item.mechanic} phase={phase} pages={plan.pages} cardRef={reorder.cardRef(ci)} cardClass={reorder.cardClass(ci)} handleProps={reorder.handleProps(ci)}
             onChange={(patch, key) => onMechanic(item.id, patch, key)} onSelect={() => onSelectMechanic(item.id)} onDelete={() => onDeleteMechanic(item.id)}
-            onCreatePage={onCreatePage} onOpenPage={onOpenPage} />
+            onCreatePage={onCreatePage} onOpenPage={onOpenPage} map={renderMechanicMap?.(item.mechanic)} />
         </Fragment>
       ) : (c => (
         <Fragment key={c.id}>
@@ -546,14 +547,15 @@ function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase;
 }
 
 /** A telegraph in the timeline: when it goes off, and the mechanic page that explains it. */
-function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onDelete, onCreatePage, onOpenPage }: {
+function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onDelete, onCreatePage, onOpenPage, map }: {
   m: Entity; phase: Phase; pages: MechanicPage[]; cardRef: (el: HTMLElement | null) => void; cardClass: string; handleProps: React.HTMLAttributes<HTMLElement>;
-  onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onDelete: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void;
+  onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onDelete: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void; map?: React.ReactNode;
 }) {
   const page = pages.find(g => g.id === m.page);
   const tone = mechanicTone(m);
   return (
     <section ref={cardRef} data-timeline-id={m.id} className={`conversation mechanic-item${cardClass}`} style={{ '--tone': tone } as React.CSSProperties} aria-label={`Mechanic: ${m.name}`}>
+      <div className="conv-main">
       <header className="conversation-head">
         <button type="button" className="drag-handle" aria-label={`Reorder ${m.name}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>
         <EventIcon kind="mechanic" />
@@ -578,6 +580,8 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
       </div>
       {page && pageText(page) && <p className="page-excerpt">{pageText(page).length > 160 ? `${pageText(page).slice(0, 160)}…` : pageText(page)}</p>}
       {page && <MapPreviews diagrams={pageMaps(page)} width={120} captions />}
+      </div>
+      {map && <div className="conv-side">{map}</div>}
     </section>
   );
 }

@@ -242,6 +242,20 @@ export function conversationScenes(phase: Phase, plan: Plan) {
   return scenes;
 }
 
+/** The map when a timeline event comes up: where the last conversation before it left off (the starting map if none). */
+export function sceneBeforeEvent(phase: Phase, plan: Plan, eventId: string): Phase {
+  const scenes = conversationScenes(phase, plan);
+  let current = phase;
+  for (const item of timelineOf(phase)) {
+    if (item.id === eventId) return current;
+    if (item.kind === 'conversation') current = scenes.get(item.id)?.end ?? current;
+  }
+  return current;
+}
+/** A phase showing only its units and the given telegraphs: each telegraph appears only at its own point in the timeline. */
+export const withTelegraphs = (phase: Phase, ids: string[]): Phase =>
+  ({ ...phase, entities: phase.entities.filter(e => isUnit(e.kind) || ids.includes(e.id)) });
+
 /** The map at a step of a conversation: its start, with the conversation's earlier actions played. */
 export function sceneAtStep(phase: Phase, plan: Plan, conversationId: string, stepId: string | null) {
   const c = phase.conversations.find(x => x.id === conversationId);

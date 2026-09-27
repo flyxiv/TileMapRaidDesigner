@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneOf, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -19,8 +19,13 @@ import { SaveToPageMenu, StoryPanel } from './StoryPanel';
 type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
 type History = { past: Plan[]; present: Plan; future: Plan[] };
 type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize'; id?: string; offset?: [number, number]; corner?: TransformHandle };
-/** The map an edit goes to: the phase's starting map, or a conversation's own map (by conversation id). */
+/**
+ * The map an edit goes to: the phase's starting map, a conversation's own map (by conversation id), or a telegraph's
+ * own map on its timeline card (`m:` + telegraph id), where only that telegraph can be edited.
+ */
 type Target = 'base' | string;
+const mechTarget = (id: string) => `m:${id}`;
+const mechOf = (t: Target) => t.startsWith('m:') ? t.slice(2) : null;
 
 
 const updatePhase = (plan: Plan, index: number, fn: (p: Phase) => Phase): Plan =>
@@ -84,12 +89,21 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [activeTarget, setActiveTarget] = useState<Target>('base');
   const [hoverTarget, setHoverTarget] = useState<Target>('base');
   /** The editable phase behind a map: the phase's starting map, or where a conversation's map starts. */
-  const phaseFor = (t: Target, f: Phase = phase, pl: Plan = plan) => t === 'base' ? f : (conversationScenes(f, pl).get(t)?.start ?? f);
+  const phaseFor = (t: Target, f: Phase = phase, pl: Plan = plan) => t === 'base' ? f
+    : mechOf(t) ? sceneBeforeEvent(f, pl, mechOf(t)!)
+    : (conversationScenes(f, pl).get(t)?.start ?? f);
+  /** What a map shows: units, plus only the telegraph whose card it is. */
+  const visibleOn = (t: Target) => (e: Entity) => isUnit(e.kind) || e.id === mechOf(t);
   /**
    * Applies an edit made on a map. Conversation maps keep their own terrain and units (taken from the scene before them
    * the first time they are edited); telegraphs are shared by the phase, so telegraph edits land on the phase itself.
    */
   const updateTarget = (pl: Plan, t: Target, fn: (v: Phase) => Phase): Plan => updatePhase(pl, pi, f => {
+    if (mechOf(t)) {
+      // A telegraph's card edits only telegraphs; its units belong to earlier maps.
+      const v = fn(phaseFor(t, f, pl));
+      return { ...f, entities: [...f.entities.filter(e => isUnit(e.kind)), ...v.entities.filter(e => isMechanic(e.kind))] };
+    }
     if (t === 'base' || !f.conversations.some(c => c.id === t)) return fn(f);
     const start = phaseFor(t, f, pl), v = fn(start);
     if (v === start) return f;
@@ -221,7 +235,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     }
     const tile = p.tile;
     if (picking) { if (tile) { picking.apply(tile, t); setPicking(null); } return; }
-    const hit = p.entityId ? tphase.entities.find(e => e.id === p.entityId) : tile ? entityAt(tphase, ...tile) : undefined;
+    const shown = { ...tphase, entities: tphase.entities.filter(visibleOn(t)) };
+    const found = p.entityId ? shown.entities.find(e => e.id === p.entityId) : tile ? entityAt(shown, ...tile) : undefined;
+    const hit = mechOf(t) && found && isUnit(found.kind) ? undefined : found;
     switch (tool.type) {
       case 'select': {
         if (p.handle) {
@@ -253,10 +269,10 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   /** Adds a unit or telegraph at a tile, or paints one brush of terrain, as one undo step. */
   /** `extra` overrides the new telegraph's defaults, e.g. the name and page it gets when placed from a mechanic page. */
-  const spawn = (item: Tool, tile: [number, number], extra?: Partial<Entity>, t: Target = activeTarget) => {
+  const spawn = (item: Tool, tile: [number, number], extra?: Partial<Entity>, t: Target = activeTarget, placeInTimeline = true) => {
     const tphase = phaseFor(t);
     setActiveTarget(t);
-    if (item.type === 'terrain') { commit(pl => paintOn(pl, t, brushTiles(...tile), item.terrain)); return; }
+    if (item.type === 'terrain') { if (!mechOf(t)) commit(pl => paintOn(pl, t, brushTiles(...tile), item.terrain)); return; }
     let e: Entity;
     if (item.type === 'unit') {
       const { code, name } = nextCode(tphase, item.kind);
@@ -270,6 +286,25 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         notify(`${e.name} starts from ${on.name}`);
       }
     } else return;
+    if (isMechanic(e.kind)) {
+      if (mechOf(t) === null && t !== 'base' && !phase.conversations.some(c => c.id === t)) t = 'base';
+      const after = t === 'base' ? null : mechOf(t) ?? t;
+      const created = e;
+      commit(pl => {
+        const added = updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, created] }));
+        if (!placeInTimeline) return added;
+        return updatePhase(added, pi, f => {
+          const ids = timelineOf(f).map(i => i.id).filter(id => id !== created.id);
+          const at = after ? ids.indexOf(after) + 1 : 0;
+          return { ...f, timeline: [...ids.slice(0, at), created.id, ...ids.slice(at)] };
+        });
+      });
+      setActiveTarget(mechTarget(e.id));
+      setSelectedId(e.id);
+      requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${created.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      return e.id;
+    }
+    if (mechOf(t)) { notify('Place units on the starting map or a conversation map'); return; }
     commit(pl => updateTarget(pl, t, f => ({ ...f, entities: [...f.entities, e] })));
     setSelectedId(e.id);
     return e.id;
@@ -283,6 +318,11 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     onDragEnd: () => { setDragItem(null); setHover(null); },
   });
 
+  const selectTelegraph = (id: string) => {
+    setActiveTarget(mechTarget(id));
+    setSelectedId(id);
+    requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  };
   const saveDiagram = (pageId: string | null, diagram: Diagram) => {
     const page = pageId ? plan.pages.find(g => g.id === pageId) : createPage(diagram.caption || 'New mechanic');
     if (!page) return;
@@ -294,7 +334,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const dragOver = (tile: [number, number] | null, t: Target) => {
     if (!dragItem) return;
     setHover(tile); setHoverTarget(t);
-    if (tile && dragItem.type === 'terrain') { setActiveTarget(t); commit(pl => paintOn(pl, t, brushTiles(...tile), dragItem.terrain), `drag-paint-${t}`); }
+    if (tile && dragItem.type === 'terrain' && !mechOf(t)) { setActiveTarget(t); commit(pl => paintOn(pl, t, brushTiles(...tile), dragItem.terrain), `drag-paint-${t}`); }
   };
   const dropOn = (tile: [number, number], t: Target) => {
     if (dragItem && dragItem.type !== 'terrain') spawn(dragItem, tile, undefined, t);
@@ -414,16 +454,16 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     return from ? { step: acting, from, text: actionText(acting, phase), rotation: faceRotation(acting, scene.entities) } : null;
   })();
   const mapCard = (t: Target, conv?: Conversation) => {
-    const display = displayFor(t);
-    const shown = display === phase ? plan : { ...plan, phases: plan.phases.map((f, i) => i === pi ? display : f) };
+    const display = withTelegraphs(displayFor(t), mechOf(t) ? [mechOf(t)!] : []);
+    const shown = { ...plan, phases: plan.phases.map((f, i) => i === pi ? display : f) };
     const isActive = activeTarget === t, here = !!conv && !!active && active.conversation.id === conv.id;
     const cellSize = Math.max(10, Math.min(24, Math.floor(420 / (plan.cols + 1))));
     return (
       <div className={`timeline-map${isActive ? ' active' : ''}`}>
         <div className="timeline-map-head">
-          <span>{t === 'base' ? 'Starting map' : conv?.scene ? 'Own map' : 'Continues from before'}{isActive && <b> · editing</b>}</span>
+          <span>{t === 'base' ? 'Starting map' : mechOf(t) ? 'At this moment' : conv?.scene ? 'Own map' : 'Continues from before'}{isActive && <b> · editing</b>}</span>
           {conv?.scene && <button type="button" className="text-button" title="Drop this conversation's own map and continue from the one before" onClick={() => commit(p => updatePhase(p, pi, f => ({ ...f, conversations: f.conversations.map(c => c.id === conv.id ? { ...c, scene: undefined } : c) })))}>Reset</button>}
-          {conv && <SaveToPageMenu plan={plan} onSave={pageId => saveDiagram(pageId, sceneToDiagram(display, plan, conv.title || 'Conversation map'))} />}
+          {(conv || mechOf(t)) && <SaveToPageMenu plan={plan} onSave={pageId => saveDiagram(pageId, sceneToDiagram(display, plan, conv?.title || phase.entities.find(e => e.id === mechOf(t))?.name || 'Map'))} />}
         </div>
         <div className={`timeline-map-canvas mode-${tool.type}`}>
           <BattleMap ref={t === 'base' ? mapRef : undefined} className="battlemap" plan={shown} phaseIndex={pi} cell={cellSize} selectedId={isActive ? selectedId : null}
@@ -564,7 +604,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, conversations: fn(f.conversations) })), key)}
                 onPhase={(fn, key) => commit(p => updatePhase(p, pi, fn), key)}
                 onMechanic={(id, patch, key) => patchEntity(id, patch, key)}
-                onSelectMechanic={setSelectedId}
+                onSelectMechanic={selectTelegraph}
                 onDeleteMechanic={id => { deleteEntity(id, 'base'); notify('Telegraph deleted. Ctrl+Z to undo.'); }}
                 onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
                 onOpenPage={id => { setPageId(id); setView('pages'); }}
@@ -587,11 +627,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                     return [cx, cy];
                   };
                   const tile: [number, number] = aims(kind) && boss ? [boss.x, boss.y] : freeNearCenter();
-                  const id2 = spawn({ type: 'mechanic', kind }, tile, extra, 'base');
+                  const id2 = spawn({ type: 'mechanic', kind }, tile, extra, 'base', false);
                   requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id2}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
                 }}
                 pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}
                 renderMap={c => mapCard(c.id, c)}
+                renderMechanicMap={m => mapCard(mechTarget(m.id))}
                 start={(
                   <section className="conversation timeline-start" aria-label="Start of phase">
                     <div className="conv-main">
@@ -636,7 +677,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             plan={plan} phase={targetPhase} prevPhase={prevPhase} entity={selected}
             onChange={(patch, key) => selected && patchEntity(selected.id, patch, key)}
             onDelete={() => selected && deleteEntity(selected.id)}
-            onSelect={setSelectedId}
+            onSelect={id => { const e = phase.entities.find(x => x.id === id); if (e && isMechanic(e.kind)) selectTelegraph(id); else setSelectedId(id); }}
           />
           <div className="notes-section">
             <label className="section-title" htmlFor="phase-notes">Phase notes</label>
