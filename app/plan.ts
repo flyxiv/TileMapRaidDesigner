@@ -52,6 +52,8 @@ export type Entity = {
   id: string; kind: Kind; name: string; code: string; x: number; y: number; radius: number; rotation: number; turns: number; anchor?: string;
   /** Donut safe radius, line width, knockback distance and tower soak count, for the mechanics that use them. */
   inner?: number; width?: number; push?: number; soak?: number;
+  /** Units only: tiles per side, overriding the type's usual size. */
+  size?: number;
 };
 /** A choice offered on a dialogue line. `goto` names the phase the fight jumps to when it is picked. */
 export type DialogueOption = { id: string; text: string; outcome: string; goto?: string };
@@ -73,7 +75,8 @@ export type Plan = { version: 2; name: string; cols: number; rows: number; phase
 
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
 export const isMechanic = (kind: Kind): kind is MechanicKind => kind in mechanicTypes;
-export const footprint = (e: Pick<Entity, 'kind'>) => isUnit(e.kind) ? unitTypes[e.kind].size : 1;
+export const MAX_UNIT_SIZE = 5;
+export const footprint = (e: Pick<Entity, 'kind'> & { size?: number }) => isUnit(e.kind) ? e.size ?? unitTypes[e.kind].size : 1;
 export const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 
 export const colLabel = (i: number) => i < 26 ? String.fromCharCode(65 + i) : 'A' + String.fromCharCode(65 + i - 26);
@@ -290,7 +293,7 @@ export function validatePlan(value: unknown): value is Plan {
         (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
         int(e.x, 0, p.cols - footprint(e)) && int(e.y, 0, p.rows - footprint(e)) &&
         Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 && int(e.turns, 0, 9) &&
-        num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) &&
+        num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
         (e.anchor === undefined || typeof e.anchor === 'string')) &&
       Array.isArray(f.dialogue) && f.dialogue.length <= 200 && new Set(f.dialogue.map(l => l?.id)).size === f.dialogue.length &&
       f.dialogue.every(l => l && typeof l.id === 'string' && validTrigger(l.trigger) && typeof l.speaker === 'string' && l.speaker.length <= 60 &&

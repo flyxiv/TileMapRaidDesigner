@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { footprint, isMechanic, isUnit, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { MAX_UNIT_SIZE, footprint, isMechanic, isUnit, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -90,6 +90,12 @@ function UnitFields({ plan, phase, prevPhase, u, onChange }: { plan: Plan; phase
       </label>
       <label className="field">Label
         <input value={u.code} maxLength={6} onChange={ev => onChange({ code: ev.target.value.toUpperCase() }, `code-${u.id}`)} />
+      </label>
+      <label className="field span-2">Size
+        <select value={u.size ?? ''} onChange={ev => onChange({ size: ev.target.value ? Number(ev.target.value) : undefined })}>
+          <option value="">{type.name} default ({type.size} × {type.size})</option>
+          {Array.from({ length: MAX_UNIT_SIZE }, (_, i) => i + 1).filter(n => n <= Math.min(plan.cols, plan.rows)).map(n => <option key={n} value={n}>{n} × {n} tiles</option>)}
+        </select>
       </label>
     </div>
     <PositionFields plan={plan} e={u} onChange={onChange} />
