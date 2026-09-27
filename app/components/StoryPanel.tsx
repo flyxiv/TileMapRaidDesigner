@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand
 import { Fragment, useRef, useState } from 'react';
 import { BattleMap } from './BattleMap';
 import { MapPreviews } from './MapPreview';
+import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
 import { pageMaps, pageText, scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
@@ -229,7 +230,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
 
   return (
     <div className={`story${wide ? ' wide' : ''}${reorder.dragging || lineDrag.dragging ? ' reordering' : ''}`}>
-      {!wide && <p className="hint">The phase in order: conversations and the telegraphs on the map. Each starts when its trigger fires (boss HP, encounter time, or time after a mechanic). Drag cards to reorder; link telegraphs to mechanic pages to explain them.</p>}
+      {!wide && <p className="hint">The phase's events in order: conversations and the telegraphs on the map. Each starts when its trigger fires (boss HP, encounter time, or time after a mechanic). Drag cards to reorder; link telegraphs to mechanic pages to explain them.</p>}
       {start}
       {items.map((item, ci) => item.kind === 'mechanic' ? (
         <Fragment key={item.id}>
@@ -247,17 +248,19 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
             <button type="button" className="drag-handle" aria-label={`Reorder ${c.title || `conversation ${conversations.indexOf(c) + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...reorder.handleProps(ci)}>
               <GripVertical size={15} />
             </button>
+            <EventIcon kind="conversation" />
             <input aria-label="Conversation title" className="conversation-title" value={c.title} maxLength={120} placeholder={`Conversation ${conversations.indexOf(c) + 1}`}
               onChange={e => patchConversation(c.id, x => ({ ...x, title: e.target.value }), `title-${c.id}`)} />
             <div className="story-tools">
               <button type="button" className="icon-button danger" aria-label="Delete conversation"
-                onClick={() => { if (c.lines.every(l => !isAction(l) && !l.text) || confirm(`Delete "${c.title || `Conversation ${conversations.indexOf(c) + 1}`}" and its ${c.lines.length} step${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
+                onClick={() => { if (c.lines.every(l => !isAction(l) && !l.text) || confirm(`Delete "${c.title || `Conversation ${conversations.indexOf(c) + 1}`}" and its ${c.lines.length} component${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
                 <Trash2 size={13} />
               </button>
             </div>
           </header>
           <TriggerFields phase={phase} trigger={c.trigger} onChange={(t, key) => t && patchConversation(c.id, x => ({ ...x, trigger: t }), key && `${key}-${c.id}`)} />
           {!renderMap && <ConversationMap plan={plan} phaseIndex={phaseIndex} conversation={c} caption={c.title || `Conversation ${conversations.indexOf(c) + 1}`} onSave={onSaveDiagram} />}
+          <div className="components-title">Components</div>
           <ol ref={lineDrag.listRef(c.id)} className={`conversation-lines${lineDrag.listClass(c)}`}>
             {c.lines.map((l, li) => {
               const common = {
@@ -298,19 +301,24 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
       ))(item.conversation))}
       {zone(items.length)}
       <div className="timeline-add">
-        <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
         <div className="menu-wrap">
           <button type="button" className="button story-add" aria-haspopup="menu" aria-expanded={mechanicMenu} onClick={() => setMechanicMenu(o => !o)}>
-            <Plus size={14} /> New mechanic
+            <Plus size={14} /> New event
           </button>
           {mechanicMenu && (
             <div className="menu mechanic-menu" role="menu">
-              {plan.pages.length === 0 && <p className="hint menu-hint">No mechanic pages yet. Create one to describe the mechanic, then place it from here.</p>}
+              <div className="menu-heading">Conversation</div>
+              <button type="button" role="menuitem" onClick={() => { setMechanicMenu(false); addConversation(); }}>
+                <EventIcon kind="conversation" /> <span><b>New conversation</b><small>Lines and actions that play together</small></span>
+              </button>
+              <hr />
+              <div className="menu-heading">Mechanic</div>
+              {plan.pages.length === 0 && <p className="hint menu-hint">No mechanic pages yet. Create one to describe the mechanic, then add it from here.</p>}
               {plan.pages.map(g => {
                 const kind = pageKind(plan, g);
                 return (
                   <button key={g.id} type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onNewMechanic(g.id); }}>
-                    <Glyph kind={kind} size={14} color={mechanicTone({ kind })} />
+                    <EventIcon kind="mechanic" />
                     <span><b>{g.title || 'Untitled page'}</b><small>{mechanicTypes[kind].name}{pageText(g) ? ` · ${pageText(g).split('\n')[0].slice(0, 60)}` : ''}</small></span>
                     <MapPreviews diagrams={pageMaps(g)} width={56} max={1} />
                   </button>
@@ -318,7 +326,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
               })}
               <hr />
               <button type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onOpenPage(onCreatePage('New mechanic')); }}>
-                <BookOpen size={14} /> <span><b>New mechanic page</b><small>Describe a mechanic, then place it on the timeline</small></span>
+                <BookOpen size={14} /> <span><b>New mechanic page</b><small>Describe a mechanic, then add it as an event</small></span>
               </button>
             </div>
           )}
@@ -547,12 +555,12 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
     <section ref={cardRef} data-timeline-id={m.id} className={`conversation mechanic-item${cardClass}`} style={{ '--tone': tone } as React.CSSProperties} aria-label={`Mechanic: ${m.name}`}>
       <header className="conversation-head">
         <button type="button" className="drag-handle" aria-label={`Reorder ${m.name}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>
-        <span className="mechanic-item-icon"><Glyph kind={m.kind} size={14} color="#141819" strokeWidth={2.2} /></span>
+        <EventIcon kind="mechanic" />
         <input aria-label="Mechanic name" className="conversation-title" value={m.name} maxLength={120} onChange={e => onChange({ name: e.target.value }, `name-${m.id}`)} />
         <button type="button" className="icon-button" aria-label={`Show ${m.name} on the map`} title="Select on the map" onClick={onSelect}><MapPin size={14} /></button>
         <button type="button" className="icon-button danger" aria-label={`Delete ${m.name}`} title="Delete this telegraph" onClick={onDelete}><Trash2 size={14} /></button>
       </header>
-      <div className="mechanic-item-kind">{mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</div>
+      <div className="mechanic-item-kind">Mechanic · {mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</div>
       <TriggerFields phase={phase} trigger={m.trigger} exclude={m.id} onChange={(t, key) => onChange({ trigger: t }, key && `${key}-${m.id}`)} />
       <div className="page-link">
         <BookOpen size={13} />
@@ -596,7 +604,7 @@ function ConversationMap({ plan, phaseIndex, conversation, caption, onSave }: { 
             <div className="menu conv-map-menu" role="menu">
               {plan.pages.map(g => (
                 <button key={g.id} type="button" role="menuitem" onClick={() => save(g.id)}>
-                  <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{pageMaps(g).length} map{pageMaps(g).length === 1 ? '' : 's'}</small></span>
+                  <EventIcon kind="mechanic" /> <span><b>{g.title || 'Untitled page'}</b><small>{pageMaps(g).length} map{pageMaps(g).length === 1 ? '' : 's'}</small></span>
                 </button>
               ))}
               {plan.pages.length > 0 && <hr />}
@@ -621,7 +629,7 @@ export function SaveToPageMenu({ plan, onSave }: { plan: Plan; onSave: (pageId: 
         <div className="menu conv-map-menu" role="menu">
           {plan.pages.map(g => (
             <button key={g.id} type="button" role="menuitem" onClick={() => save(g.id)}>
-              <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{pageMaps(g).length} map{pageMaps(g).length === 1 ? '' : 's'}</small></span>
+              <EventIcon kind="mechanic" /> <span><b>{g.title || 'Untitled page'}</b><small>{pageMaps(g).length} map{pageMaps(g).length === 1 ? '' : 's'}</small></span>
             </button>
           ))}
           {plan.pages.length > 0 && <hr />}

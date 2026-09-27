@@ -1,6 +1,7 @@
 'use client';
 import { Trash2 } from 'lucide-react';
 import { MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -26,7 +27,7 @@ export function Inspector({ plan, phase, prevPhase, entity, onChange, onDelete, 
         <div className="chip-row">
           {mechanics.map(m => (
             <button key={m.id} type="button" className={`mech-chip${entity?.id === m.id ? ' active' : ''}`} style={{ '--tone': mechanicTone(m) } as React.CSSProperties} aria-pressed={entity?.id === m.id} onClick={() => onSelect(m.id)}>
-              <span className="mech-badge"><Glyph kind={m.kind} size={11} color="#141819" strokeWidth={2.4} /></span>{m.name}
+              <EventIcon kind="mechanic" size={11} />{m.name}
             </button>
           ))}
         </div>

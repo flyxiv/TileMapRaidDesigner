@@ -3,6 +3,7 @@ import { ArrowRight, ChevronLeft, ChevronRight, Footprints, Hand, RotateCw } fro
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { conversationScenes, sceneAtStep, diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
+import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
 import { speakerColor } from './StoryPanel';
 
@@ -88,7 +89,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
           </ol>
           {script.length > 0 && (
             <div className="present-story-script">
-              <div className="section-title">Timeline</div>
+              <div className="section-title">Events</div>
               {timelineOf(phase).map(item => {
                 if (item.kind === 'mechanic') {
                   const m = item.mechanic, li = script.findIndex(s => s.mechanic?.id === m.id), page = plan.pages.find(g => g.id === m.page);
@@ -96,7 +97,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                     <div key={m.id} className={`script-mechanic${li === line ? ' active' : ''}`} style={{ '--tone': mechanicTone(m) } as React.CSSProperties} onClick={() => setCursor({ phase: index, line: li })}>
                       <div className="script-conversation-head">
                         <span className="script-turn">{m.trigger ? triggerLabel(m.trigger, phase).toUpperCase() : 'MECHANIC'}</span>
-                        <span className="script-mechanic-icon"><Glyph kind={m.kind} size={12} color="#141819" strokeWidth={2.4} /></span><b>{m.name}</b>
+                        <EventIcon kind="mechanic" size={12} /><b>{m.name}</b>
                       </div>
                       {li === line && page && page.blocks.length > 0 && (
                         <div className="script-mechanic-blocks">
@@ -116,7 +117,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                 const c = item.conversation;
                 return (
                 <div key={c.id} className="script-conversation">
-                  <div className="script-conversation-head"><span className="script-turn">{triggerLabel(c.trigger, phase).toUpperCase()}</span><b>{c.title || `Conversation ${phase.conversations.indexOf(c) + 1}`}</b></div>
+                  <div className="script-conversation-head"><span className="script-turn">{triggerLabel(c.trigger, phase).toUpperCase()}</span><EventIcon kind="conversation" size={12} /><b>{c.title || `Conversation ${phase.conversations.indexOf(c) + 1}`}</b></div>
                   {c.lines.map(l => {
                     const li = script.findIndex(s => s.step?.id === l.id);
                     if (isAction(l)) return (

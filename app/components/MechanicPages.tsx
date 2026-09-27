@@ -2,6 +2,7 @@
 import { ArrowDown, ArrowUp, BookOpen, GripVertical, Map as MapIcon, MapPin, Plus, Trash2, Type } from 'lucide-react';
 import { useState } from 'react';
 import { DiagramEditor } from './DiagramEditor';
+import { EventIcon } from './EventIcon';
 import { Inspector } from './Inspector';
 import { moveTo, useReorder } from './StoryPanel';
 import { MapPreviews } from './MapPreview';
@@ -47,7 +48,7 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
             const count = pageUses(plan, p.id).length;
             return (
               <button key={p.id} type="button" className={`pages-item${p.id === page?.id ? ' active' : ''}`} aria-current={p.id === page?.id ? 'page' : undefined} onClick={() => onSelect(p.id)}>
-                <b>{p.title || 'Untitled page'}</b>
+                <b><EventIcon kind="mechanic" size={11} /> {p.title || 'Untitled page'}</b>
                 <small>{count ? `Used ${count} time${count > 1 ? 's' : ''}` : 'Not linked yet'}{pageMaps(p).length ? ` · ${pageMaps(p).length} map${pageMaps(p).length > 1 ? 's' : ''}` : ''}</small>
                 <MapPreviews diagrams={pageMaps(p)} width={110} max={1} />
               </button>
@@ -70,7 +71,7 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
             <small className="hint">Used when you place this mechanic from the Timeline's New mechanic menu.</small>
           </label>
           <section className="page-blocks" aria-label="Page">
-            <div className="section-title">Page <span className="plain">Text and maps, top to bottom</span></div>
+            <div className="section-title">Components <span className="plain">Text and maps, top to bottom</span></div>
             {page.blocks.map((b, i, all) => {
               const move = (by: number) => onUpdate(page.id, g => ({ ...g, blocks: moveTo(g.blocks, i, i + by) }));
               const remove = () => onUpdate(page.id, g => ({ ...g, blocks: g.blocks.filter(x => x.id !== b.id) }));
@@ -119,11 +120,11 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
             </div>
           </section>
           <section className="page-uses">
-            <div className="section-title">Used in the timeline</div>
+            <div className="section-title">Used as an event</div>
             {uses.length === 0 && <p className="hint">No telegraph links here yet. In a phase's Timeline tab, pick this page on a telegraph's card.</p>}
             {uses.map(({ phase, phaseIndex, mechanic }) => (
               <button key={`${phase.id}-${mechanic.id}`} type="button" className="page-use" onClick={() => onShow(phaseIndex, mechanic.id)}>
-                <span className="page-use-icon" style={{ background: mechanicTone(mechanic) }}><Glyph kind={mechanic.kind} size={13} color="#141819" strokeWidth={2.2} /></span>
+                <EventIcon kind="mechanic" />
                 <span className="page-use-text">
                   <b>{mechanic.name}</b>
                   <small>Phase {phaseIndex + 1}: {phase.name} · {mechanicTypes[mechanic.kind as MechanicKind].name}{mechanic.trigger ? ` · ${triggerLabel(mechanic.trigger, phase)}` : ''}</small>
