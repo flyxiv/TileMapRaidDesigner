@@ -80,7 +80,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [pageId, setPageId] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   /** A Story tab action waiting for a tile click (a move destination). */
-  const [picking, setPicking] = useState<{ id?: string; apply: (tile: [number, number]) => void } | null>(null);
+  const [picking, setPicking] = useState<{ id?: string; apply: (tile: [number, number]) => void; label?: string; placing?: MechanicKind } | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const lastEdit = useRef<{ key: string; at: number } | null>(null);
   const presentRef = useRef(hist.present);
@@ -494,7 +494,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <button type="button" className="icon-button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!hist.future.length} onClick={redo}><Redo2 size={16} /></button>
             </div>
             <div className="toolbar-center">
-              {picking ? <span><b>Click a tile to set where they move</b> · Esc to cancel</span> : <span>Tool: <b>{toolLabel}</b></span>}
+              {picking ? <span><b>{picking.label ?? 'Click a tile to set where they move'}</b> · Esc to cancel</span> : <span>Tool: <b>{toolLabel}</b></span>}
               {hover && phase.terrain[hover[1]]?.[hover[0]] && <><i>·</i><span>Tile <b>{tileLabel(...hover)}</b> {terrainTypes[phase.terrain[hover[1]][hover[0]]].name}</span></>}
             </div>
             <div className="toolbar-group">
@@ -565,6 +565,11 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 onSelectMechanic={setSelectedId}
                 onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
                 onOpenPage={id => { setPageId(id); setView('pages'); }}
+                placingMechanic={picking?.placing ?? null}
+                onNewMechanic={kind => kind === 'armageddon'
+                  // Arena-wide: nothing to place, so it goes straight onto the timeline.
+                  ? spawn({ type: 'mechanic', kind }, [0, 0])
+                  : setPicking({ placing: kind, label: `Click a tile to place ${mechanicTypes[kind].name} (on a unit to attach it)`, apply: tile => spawn({ type: 'mechanic', kind }, tile) })}
                 pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}
               />
             </div>

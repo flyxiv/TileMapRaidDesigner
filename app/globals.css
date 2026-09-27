@@ -421,3 +421,10 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .script-mechanic.active { border-color: var(--tone); }
 .script-mechanic-icon { width: 20px; height: 20px; border-radius: 5px; background: var(--tone); display: flex; align-items: center; justify-content: center; }
 .script-mechanic-page { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); white-space: pre-line; }
+.timeline-add { display: flex; flex-wrap: wrap; gap: 8px; }
+.timeline-add .menu-wrap { position: relative; }
+.story-add.placing { border-color: var(--tele); color: var(--tele); }
+.mechanic-menu { left: 0; right: auto; top: auto; bottom: calc(100% + 6px); min-width: 250px; max-height: 60vh; overflow-y: auto; }
+.mechanic-menu button { align-items: flex-start; }
+.mechanic-menu button span { display: flex; flex-direction: column; gap: 2px; }
+.mechanic-menu small { font-size: 10px; color: var(--muted); }

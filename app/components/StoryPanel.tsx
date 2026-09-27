@@ -20,6 +20,10 @@ type Props = {
   onSelectMechanic: (id: string) => void;
   onCreatePage: (title: string) => string;
   onOpenPage: (id: string) => void;
+  /** Start placing a new telegraph of this kind: the next map click puts it there. */
+  onNewMechanic: (kind: MechanicKind) => void;
+  /** Set while a new telegraph is waiting to be placed. */
+  placingMechanic: MechanicKind | null;
   /** Asks the editor for the next tile clicked on the map; `null` while no pick is pending. */
   onPickTile: (apply: ((tile: [number, number]) => void) | null) => void;
   pickingFor: string | null;
@@ -176,7 +180,8 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onPickTile, pickingFor }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onPickTile, pickingFor }: Props) {
+  const [mechanicMenu, setMechanicMenu] = useState(false);
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
   const items = timelineOf(phase);
@@ -280,7 +285,23 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
         </Fragment>
       ))(item.conversation))}
       {zone(items.length)}
-      <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
+      <div className="timeline-add">
+        <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
+        <div className="menu-wrap">
+          <button type="button" className={`button story-add${placingMechanic ? ' placing' : ''}`} aria-haspopup="menu" aria-expanded={mechanicMenu} onClick={() => setMechanicMenu(o => !o)}>
+            <Plus size={14} /> {placingMechanic ? `Click the map to place ${mechanicTypes[placingMechanic].name}` : 'New mechanic'}
+          </button>
+          {mechanicMenu && (
+            <div className="menu mechanic-menu" role="menu">
+              {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => (
+                <button key={k} type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onNewMechanic(k); }}>
+                  <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} /> <span><b>{mechanicTypes[k].name}</b><small>{mechanicTypes[k].description}</small></span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
