@@ -1,7 +1,7 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight, Footprints, Hand, RotateCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, scriptOf, triggerLabel, mechanicTypes, type MechanicKind, type Plan } from '../plan';
+import { actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { Glyph } from './glyphs';
 import { speakerColor } from './StoryPanel';
@@ -18,7 +18,8 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   const [chosen, setChosen] = useState<Record<string, string>>({});
   // The dialogue line on screen; it starts at the first line whenever the phase changes some other way.
   const [cursor, setCursor] = useState({ phase: index, line: 0 });
-  const script = scriptOf(phase);
+  // The phase's timeline in order: every line and action, and each telegraph as it comes up.
+  const script = presentSteps(phase);
   const line = cursor.phase === index ? Math.min(cursor.line, Math.max(0, script.length - 1)) : 0;
 
   useLayoutEffect(() => {
@@ -52,7 +53,8 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   const current = step && !isAction(step) ? step : undefined;
   const currentConversation = script[line]?.conversation;
   // Actions play as you step: the map shows the scene after every earlier action, and previews the current one.
-  const staged = stagePhase(phase, plan, script.slice(0, line).map(s => s.step).filter(isAction));
+  const staged = stagePhase(phase, plan, script.slice(0, line).map(s => s.step).filter((s): s is ConversationStep => !!s).filter(isAction));
+  const mechanicStep = script[line]?.mechanic;
   const stagedPlan = staged === phase ? plan : { ...plan, phases: plan.phases.map((p, i) => i === index ? staged : p) };
   const acting = step && isAction(step) ? step : undefined;
   const actor = acting && staged.entities.find(e => e.id === acting.actor);
@@ -63,7 +65,6 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
     picked: current.options.findIndex(o => o.id === chosen[current.id]),
   } : null;
 
-  const mechanics = phase.entities.filter(e => isMechanic(e.kind));
   return (
     <div className="present">
       <header className="present-top">
@@ -78,14 +79,28 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
           <ol className="present-steps">
             {steps(phase.notes).map((s, i) => <li key={i}><span>{i + 1}</span>{s}</li>)}
           </ol>
-          {phase.conversations.length > 0 && (
+          {script.length > 0 && (
             <div className="present-story-script">
-              <div className="section-title">Story</div>
-              {phase.conversations.map((c, ci) => (
+              <div className="section-title">Timeline</div>
+              {timelineOf(phase).map(item => {
+                if (item.kind === 'mechanic') {
+                  const m = item.mechanic, li = script.findIndex(s => s.mechanic?.id === m.id), page = plan.pages.find(g => g.id === m.page);
+                  return (
+                    <div key={m.id} className={`script-mechanic${li === line ? ' active' : ''}`} style={{ '--tone': mechanicTone(m) } as React.CSSProperties} onClick={() => setCursor({ phase: index, line: li })}>
+                      <div className="script-conversation-head">
+                        <span className="script-turn">{m.trigger ? triggerLabel(m.trigger, phase).toUpperCase() : 'MECHANIC'}</span>
+                        <span className="script-mechanic-icon"><Glyph kind={m.kind} size={12} color="#141819" strokeWidth={2.4} /></span><b>{m.name}</b>
+                      </div>
+                      {li === line && page?.description && <p className="script-mechanic-page">{page.description}</p>}
+                    </div>
+                  );
+                }
+                const c = item.conversation;
+                return (
                 <div key={c.id} className="script-conversation">
-                  <div className="script-conversation-head"><span className="script-turn">{triggerLabel(c.trigger, phase).toUpperCase()}</span><b>{c.title || `Conversation ${ci + 1}`}</b></div>
+                  <div className="script-conversation-head"><span className="script-turn">{triggerLabel(c.trigger, phase).toUpperCase()}</span><b>{c.title || `Conversation ${phase.conversations.indexOf(c) + 1}`}</b></div>
                   {c.lines.map(l => {
-                    const li = script.findIndex(s => s.step.id === l.id);
+                    const li = script.findIndex(s => s.step?.id === l.id);
                     if (isAction(l)) return (
                       <div key={l.id} className={`script-action${li === line ? ' active' : ''}`} onClick={() => setCursor({ phase: index, line: li })}>
                         {(() => { const Icon = { motion: Hand, face: RotateCw, move: Footprints }[l.action.kind]; return <Icon size={14} aria-hidden="true" />; })()}<i>{actionText(l, phase)}</i>
@@ -117,23 +132,13 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                     );
                   })}
                 </div>
-              ))}
-            </div>
-          )}
-          {mechanics.length > 0 && (
-            <div className="present-watch">
-              <div className="section-title">Watch for</div>
-              {mechanics.map(m => (
-                <div key={m.id} className="watch-row">
-                  <span className="watch-badge" style={{ background: mechanicTone(m) }}><Glyph kind={m.kind} size={15} color="#141819" strokeWidth={2.2} /></span>
-                  <span><b>{m.name}</b><small>{mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</small></span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
         <section className="present-stage" ref={stage} aria-label="Battle map">
-          <BattleMap plan={stagedPlan} phaseIndex={index} cell={cell} speech={speech} stage={stageMark} />
+          <BattleMap plan={stagedPlan} phaseIndex={index} cell={cell} speech={speech} stage={stageMark} selectedId={mechanicStep?.id ?? null} />
         </section>
       </div>
       <footer className="present-controls">

@@ -1,10 +1,10 @@
 'use client';
-import { Copy, Download, Eraser, FileJson, Image as ImageIcon, Keyboard, Maximize2, MessageSquare, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
+import { Copy, Download, Eraser, FileJson, Image as ImageIcon, BookOpen, Keyboard, Map as MapIcon, Maximize2, MessageSquare, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, aims, center, actionText, faceRotation, isAction, stagePhase, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_UNIT_SIZE, aims, center, createPage, timelineOf, actionText, faceRotation, isAction, stagePhase, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -13,6 +13,7 @@ import { Glyph, Logo } from './glyphs';
 import { Inspector } from './Inspector';
 import { PresentView } from './PresentView';
 import { MapSizeDialog } from './MapSizeDialog';
+import { MechanicPages } from './MechanicPages';
 import { StoryPanel } from './StoryPanel';
 
 type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
@@ -74,6 +75,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [shortcuts, setShortcuts] = useState(false);
   const [resizing, setResizing] = useState(false);
   const [panel, setPanel] = useState<'details' | 'story'>('details');
+  /** The map editor, or the encounter's mechanic pages. */
+  const [view, setView] = useState<'map' | 'pages'>('map');
+  const [pageId, setPageId] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   /** A Story tab action waiting for a tile click (a move destination). */
   const [picking, setPicking] = useState<{ id?: string; apply: (tile: [number, number]) => void } | null>(null);
@@ -311,6 +315,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest('input, textarea, select, [contenteditable]')) return;
+      if (view === 'pages' && !(e.ctrlKey || e.metaKey)) return;
       const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && k === 'y') { e.preventDefault(); redo(); return; }
@@ -378,6 +383,10 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       <header className="topbar">
         <Link href="/" className="brand"><Logo /><span>Raid<em>Designer</em></span></Link>
         <nav className="crumb" aria-label="Breadcrumb"><Link href="/">Encounters</Link><i>/</i><b>{plan.name}</b></nav>
+        <div className="view-switch" role="tablist" aria-label="View">
+          <button type="button" role="tab" aria-selected={view === 'map'} onClick={() => setView('map')}><MapIcon size={13} /> Map</button>
+          <button type="button" role="tab" aria-selected={view === 'pages'} onClick={() => setView('pages')}><BookOpen size={13} /> Mechanics{plan.pages.length > 0 && <span className="tab-count">{plan.pages.length}</span>}</button>
+        </div>
         <div className="header-actions">
           {saveState === 'error'
             ? <button type="button" className="save-status error" title={saveError} onClick={() => saveNow(latest.current)}><i />Not saved · Retry</button>
@@ -397,6 +406,18 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         </div>
       </header>
 
+      {view === 'pages' ? (
+        <MechanicPages
+          plan={plan} pageId={pageId} onSelect={setPageId}
+          onCreate={() => { const page = createPage('New mechanic'); commit(p => ({ ...p, pages: [...p.pages, page] })); setPageId(page.id); }}
+          onChange={(id, patch, key) => commit(p => ({ ...p, pages: p.pages.map(g => g.id === id ? { ...g, ...patch } : g) }), key)}
+          onDelete={id => {
+            commit(p => ({ ...p, pages: p.pages.filter(g => g.id !== id), phases: p.phases.map(f => ({ ...f, entities: f.entities.map(e => e.page === id ? { ...e, page: undefined } : e) })) }));
+            setPageId(null);
+          }}
+          onShow={(phaseIndex, entityId) => { setView('map'); setPhaseIndex(phaseIndex); setSelectedId(entityId); setPanel('story'); }}
+        />
+      ) : (
       <div className="workspace">
         <aside className="sidebar left" aria-label="Tools">
           <div className="project-heading">
@@ -530,7 +551,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           <div className="panel-tabs" role="tablist">
             <button type="button" role="tab" id="tab-details" aria-selected={panel === 'details'} aria-controls="panel-details" onClick={() => setPanel('details')}>Details</button>
             <button type="button" role="tab" id="tab-story" aria-selected={panel === 'story'} aria-controls="panel-story" onClick={() => setPanel('story')}>
-              Story{phase.conversations.length > 0 && <span className="tab-count">{phase.conversations.length}</span>}
+              Timeline{timelineOf(phase).length > 0 && <span className="tab-count">{timelineOf(phase).length}</span>}
             </button>
           </div>
           {panel === 'story' ? (
@@ -539,6 +560,11 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 plan={plan} phaseIndex={pi} activeLineId={activeLine?.id ?? null} onActivate={setActiveLineId}
                 defaultSpeaker={(selected && isUnit(selected.kind) ? selected : phase.entities.find(e => e.kind === 'boss'))?.name ?? 'Narrator'}
                 onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, conversations: fn(f.conversations) })), key)}
+                onPhase={(fn, key) => commit(p => updatePhase(p, pi, fn), key)}
+                onMechanic={(id, patch, key) => patchEntity(id, patch, key)}
+                onSelectMechanic={setSelectedId}
+                onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
+                onOpenPage={id => { setPageId(id); setView('pages'); }}
                 pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}
               />
             </div>
@@ -563,6 +589,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           </div>}
         </aside>
       </div>
+      )}
 
       {resizing && (
         <MapSizeDialog plan={plan} onClose={() => setResizing(false)} onApply={(cols, rows, anchor, fill) => {

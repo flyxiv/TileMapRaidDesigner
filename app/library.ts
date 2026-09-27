@@ -98,5 +98,5 @@ export function createBlankPlan(name: string, cols: number, rows: number, layout
       unit('h1', 'healer', 'Healer 1', 'H1', cx - 2, m + 8), unit('h2', 'healer', 'Healer 2', 'H2', cx + 1, m + 8),
     );
   }
-  return { version: 2, name, cols, rows, phases: [{ id: uid('phase'), name: 'Phase 1', notes: '', terrain, entities, conversations: [] }] };
+  return { version: 2, name, cols, rows, pages: [], phases: [{ id: uid('phase'), name: 'Phase 1', notes: '', terrain, entities, conversations: [] }] };
 }

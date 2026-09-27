@@ -1,7 +1,8 @@
 'use client';
-import { ArrowDown, ArrowUp, Crosshair, Footprints, GripVertical, Hand, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
-import { actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { Glyph } from './glyphs';
+import { mechanicTone, mechanicTypes, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -12,6 +13,13 @@ type Props = {
   activeLineId: string | null;
   onActivate: (id: string) => void;
   onChange: (fn: (conversations: Conversation[]) => Conversation[], coalesceKey?: string) => void;
+  /** Changes to the phase beyond its conversations: timeline order, and conversations created by splitting. */
+  onPhase: (fn: (phase: Phase) => Phase, coalesceKey?: string) => void;
+  /** Telegraphs in the timeline: edit, select on the map, and link to mechanic pages. */
+  onMechanic: (id: string, patch: Partial<Entity>, coalesceKey?: string) => void;
+  onSelectMechanic: (id: string) => void;
+  onCreatePage: (title: string) => string;
+  onOpenPage: (id: string) => void;
   /** Asks the editor for the next tile clicked on the map; `null` while no pick is pending. */
   onPickTile: (apply: ((tile: [number, number]) => void) | null) => void;
   pickingFor: string | null;
@@ -168,23 +176,33 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPickTile, pickingFor }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onPickTile, pickingFor }: Props) {
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
+  const items = timelineOf(phase);
+  const idsOf = (f: Phase) => timelineOf(f).map(i => i.id);
 
   const patchConversation = (id: string, fn: (c: Conversation) => Conversation, key?: string) => onChange(cs => cs.map(c => c.id === id ? fn(c) : c), key);
-  const reorder = useReorder(conversations.length, (from, to) => onChange(cs => moveTo(cs, from, to)));
-  const lineDrag = useLineDrag(conversations, (from, to) => onChange(cs => {
-    const source = cs.find(c => c.id === from.conv);
+  const reorder = useReorder(items.length, (from, to) => onPhase(f => ({ ...f, timeline: moveTo(idsOf(f), from, to) })));
+  const lineDrag = useLineDrag(conversations, (from, to) => onPhase(f => {
+    const source = f.conversations.find(c => c.id === from.conv);
     const line = source?.lines[from.index];
-    if (!source || !line) return cs;
-    const next = cs.map(c => c.id === from.conv ? { ...c, lines: c.lines.filter((_, i) => i !== from.index) } : c);
-    // Splitting a line out starts a new conversation on the same trigger.
-    const placed = 'newAt' in to
-      ? [...next.slice(0, to.newAt), { id: uid('conv'), title: '', trigger: { ...source.trigger }, lines: [line] }, ...next.slice(to.newAt)]
-      : next.map(c => c.id === to.conv ? { ...c, lines: [...c.lines.slice(0, to.index), line, ...c.lines.slice(to.index)] } : c);
-    // A conversation whose last line was dragged away goes with it, unless it has a title worth keeping.
-    return placed.filter(c => !(c.id === from.conv && c.lines.length === 0 && !c.title));
+    if (!source || !line) return f;
+    let conversations = f.conversations.map(c => c.id === from.conv ? { ...c, lines: c.lines.filter((_, i) => i !== from.index) } : c);
+    let timeline = idsOf(f);
+    if ('newAt' in to) {
+      // Splitting a step out starts a new conversation on the same trigger, at that spot in the timeline.
+      const split: Conversation = { id: uid('conv'), title: '', trigger: { ...source.trigger }, lines: [line] };
+      conversations = [...conversations, split];
+      timeline = [...timeline.slice(0, to.newAt), split.id, ...timeline.slice(to.newAt)];
+    } else {
+      conversations = conversations.map(c => c.id === to.conv ? { ...c, lines: [...c.lines.slice(0, to.index), line, ...c.lines.slice(to.index)] } : c);
+    }
+    // A conversation whose last step was dragged away goes with it, unless it has a title worth keeping.
+    const emptied = conversations.find(c => c.id === from.conv && c.lines.length === 0 && !c.title);
+    return emptied
+      ? { ...f, conversations: conversations.filter(c => c !== emptied), timeline: timeline.filter(id => id !== emptied.id) }
+      : { ...f, conversations, timeline };
   }));
   const zone = (newAt: number) => lineDrag.dragging && (
     <div ref={lineDrag.zoneRef(newAt)} className={`new-conversation-zone${lineDrag.zoneActive(newAt) ? ' active' : ''}`}>Drop here for a new conversation</div>
@@ -199,25 +217,32 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
 
   return (
     <div className={`story${reorder.dragging || lineDrag.dragging ? ' reordering' : ''}`}>
-      <p className="hint">Group lines spoken together into a conversation. A conversation starts when its trigger fires (boss HP, encounter time, or time after a mechanic) and its lines play in order. The line you are editing appears on the map.</p>
-      {conversations.map((c, ci) => (
+      <p className="hint">The phase in order: conversations and the telegraphs on the map. Each starts when its trigger fires (boss HP, encounter time, or time after a mechanic). Drag cards to reorder; link telegraphs to mechanic pages to explain them.</p>
+      {items.map((item, ci) => item.kind === 'mechanic' ? (
+        <Fragment key={item.id}>
+          {zone(ci)}
+          <MechanicItem m={item.mechanic} phase={phase} pages={plan.pages} cardRef={reorder.cardRef(ci)} cardClass={reorder.cardClass(ci)} handleProps={reorder.handleProps(ci)}
+            onChange={(patch, key) => onMechanic(item.id, patch, key)} onSelect={() => onSelectMechanic(item.id)}
+            onCreatePage={onCreatePage} onOpenPage={onOpenPage} />
+        </Fragment>
+      ) : (c => (
         <Fragment key={c.id}>
         {zone(ci)}
-        <section ref={reorder.cardRef(ci)} className={`conversation${reorder.cardClass(ci)}`} aria-label={c.title || `Conversation ${ci + 1}`}>
+        <section ref={reorder.cardRef(ci)} className={`conversation${reorder.cardClass(ci)}`} aria-label={c.title || `Conversation ${conversations.indexOf(c) + 1}`}>
           <header className="conversation-head">
-            <button type="button" className="drag-handle" aria-label={`Reorder ${c.title || `conversation ${ci + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...reorder.handleProps(ci)}>
+            <button type="button" className="drag-handle" aria-label={`Reorder ${c.title || `conversation ${conversations.indexOf(c) + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...reorder.handleProps(ci)}>
               <GripVertical size={15} />
             </button>
-            <input aria-label="Conversation title" className="conversation-title" value={c.title} maxLength={120} placeholder={`Conversation ${ci + 1}`}
+            <input aria-label="Conversation title" className="conversation-title" value={c.title} maxLength={120} placeholder={`Conversation ${conversations.indexOf(c) + 1}`}
               onChange={e => patchConversation(c.id, x => ({ ...x, title: e.target.value }), `title-${c.id}`)} />
             <div className="story-tools">
               <button type="button" className="icon-button danger" aria-label="Delete conversation"
-                onClick={() => { if (c.lines.every(l => !isAction(l) && !l.text) || confirm(`Delete "${c.title || `Conversation ${ci + 1}`}" and its ${c.lines.length} step${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
+                onClick={() => { if (c.lines.every(l => !isAction(l) && !l.text) || confirm(`Delete "${c.title || `Conversation ${conversations.indexOf(c) + 1}`}" and its ${c.lines.length} step${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
                 <Trash2 size={13} />
               </button>
             </div>
           </header>
-          <TriggerFields phase={phase} trigger={c.trigger} onChange={(t, key) => patchConversation(c.id, x => ({ ...x, trigger: t }), key && `${key}-${c.id}`)} />
+          <TriggerFields phase={phase} trigger={c.trigger} onChange={(t, key) => t && patchConversation(c.id, x => ({ ...x, trigger: t }), key && `${key}-${c.id}`)} />
           <ol ref={lineDrag.listRef(c.id)} className={`conversation-lines${lineDrag.listClass(c)}`}>
             {c.lines.map((l, li) => {
               const common = {
@@ -253,8 +278,8 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
           </div>
         </section>
         </Fragment>
-      ))}
-      {zone(conversations.length)}
+      ))(item.conversation))}
+      {zone(items.length)}
       <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
     </div>
   );
@@ -430,9 +455,9 @@ function LineCard({ plan, phase, phaseIndex, line: l, index, count, active, onAc
 
 const clampInt = (v: string, min: number, max: number) => Math.max(min, Math.min(max, Math.round(Number(v)) || 0));
 
-function TriggerFields({ phase, trigger: t, onChange }: { phase: Phase; trigger: DialogueTrigger; onChange: (t: DialogueTrigger, coalesceKey?: string) => void }) {
+function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase; trigger?: DialogueTrigger; onChange: (t: DialogueTrigger | undefined, coalesceKey?: string) => void; exclude?: string }) {
   const enemies = phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === 'enemies');
-  const mechanics = phase.entities.filter(e => isMechanic(e.kind));
+  const mechanics = phase.entities.filter(e => isMechanic(e.kind) && e.id !== exclude);
   const setType = (type: DialogueTrigger['type']) => onChange(
     type === 'hp' ? { type, percent: 50, target: hpTarget({}, phase)?.id }
       : type === 'time' ? { type, seconds: 0 }
@@ -440,22 +465,23 @@ function TriggerFields({ phase, trigger: t, onChange }: { phase: Phase; trigger:
   return (
     <div className="trigger">
       <span>When</span>
-      <select aria-label="Trigger" className="grow" value={t.type} onChange={e => setType(e.target.value as DialogueTrigger['type'])}>
+      <select aria-label="Trigger" className="grow" value={t?.type ?? ''} onChange={e => e.target.value ? setType(e.target.value as DialogueTrigger['type']) : onChange(undefined)}>
+        {exclude && <option value="">Not set</option>}
         {(Object.keys(triggerTypes) as DialogueTrigger['type'][]).map(k => <option key={k} value={k}>{triggerTypes[k]}</option>)}
       </select>
       <div className="trigger-params">
-      {t.type === 'hp' && <>
+      {t?.type === 'hp' && <>
         <select aria-label="Enemy" className="grow" value={hpTarget(t, phase)?.id ?? ''} onChange={e => onChange({ ...t, target: e.target.value || undefined })}>
           {enemies.length === 0 && <option value="">No enemies on the map</option>}
           {enemies.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
         <label className="unit-input"><input aria-label="HP percent" type="number" min={0} max={100} value={t.percent} onChange={e => onChange({ ...t, percent: clampInt(e.target.value, 0, 100) }, 'hp')} />%</label>
       </>}
-      {t.type === 'time' && <>
+      {t?.type === 'time' && <>
         <label className="unit-input"><input aria-label="Minutes" type="number" min={0} max={99} value={Math.floor(t.seconds / 60)} onChange={e => onChange({ ...t, seconds: clampInt(e.target.value, 0, 99) * 60 + (t.seconds % 60) }, 'min')} />m</label>
         <label className="unit-input"><input aria-label="Seconds" type="number" min={0} max={59} value={t.seconds % 60} onChange={e => onChange({ ...t, seconds: Math.floor(t.seconds / 60) * 60 + clampInt(e.target.value, 0, 59) }, 'sec')} />s</label>
       </>}
-      {t.type === 'mechanic' && <>
+      {t?.type === 'mechanic' && <>
         <label className="unit-input"><input aria-label="Seconds after" type="number" min={0} max={5999} value={t.seconds} onChange={e => onChange({ ...t, seconds: clampInt(e.target.value, 0, 5999) }, 'after')} />s after</label>
         <select aria-label="Mechanic" className="grow" value={mechanics.some(m => m.id === t.mechanic) ? t.mechanic : ''} onChange={e => onChange({ ...t, mechanic: e.target.value })}>
           {!mechanics.some(m => m.id === t.mechanic) && <option value="">{mechanics.length ? 'Pick a mechanic' : 'No mechanics in this phase'}</option>}
@@ -464,5 +490,39 @@ function TriggerFields({ phase, trigger: t, onChange }: { phase: Phase; trigger:
       </>}
       </div>
     </div>
+  );
+}
+
+/** A telegraph in the timeline: when it goes off, and the mechanic page that explains it. */
+function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onCreatePage, onOpenPage }: {
+  m: Entity; phase: Phase; pages: MechanicPage[]; cardRef: (el: HTMLElement | null) => void; cardClass: string; handleProps: React.HTMLAttributes<HTMLElement>;
+  onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void;
+}) {
+  const page = pages.find(g => g.id === m.page);
+  const tone = mechanicTone(m);
+  return (
+    <section ref={cardRef} className={`conversation mechanic-item${cardClass}`} style={{ '--tone': tone } as React.CSSProperties} aria-label={`Mechanic: ${m.name}`}>
+      <header className="conversation-head">
+        <button type="button" className="drag-handle" aria-label={`Reorder ${m.name}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>
+        <span className="mechanic-item-icon"><Glyph kind={m.kind} size={14} color="#141819" strokeWidth={2.2} /></span>
+        <input aria-label="Mechanic name" className="conversation-title" value={m.name} maxLength={120} onChange={e => onChange({ name: e.target.value }, `name-${m.id}`)} />
+        <button type="button" className="icon-button" aria-label={`Show ${m.name} on the map`} title="Select on the map" onClick={onSelect}><MapPin size={14} /></button>
+      </header>
+      <div className="mechanic-item-kind">{mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</div>
+      <TriggerFields phase={phase} trigger={m.trigger} exclude={m.id} onChange={(t, key) => onChange({ trigger: t }, key && `${key}-${m.id}`)} />
+      <div className="page-link">
+        <BookOpen size={13} />
+        <select aria-label="Mechanic page" value={page ? page.id : ''} onChange={e => {
+          const v = e.target.value;
+          onChange({ page: v === '__new' ? onCreatePage(m.name) : v || undefined });
+        }}>
+          <option value="">No mechanic page</option>
+          {pages.map(g => <option key={g.id} value={g.id}>{g.title || 'Untitled page'}</option>)}
+          <option value="__new">+ New page “{m.name}”</option>
+        </select>
+        {page && <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open</button>}
+      </div>
+      {page?.description && <p className="page-excerpt">{page.description.length > 160 ? `${page.description.slice(0, 160)}…` : page.description}</p>}
+    </section>
   );
 }

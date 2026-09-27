@@ -56,6 +56,9 @@ export type Entity = {
   size?: number;
   /** Cones and lines that start from a unit: aim the way that unit faces instead of their own rotation. */
   followFacing?: boolean;
+  /** Telegraphs only: when it goes off, and the mechanic page that explains it. */
+  trigger?: DialogueTrigger;
+  page?: string;
 };
 /** A choice offered on a dialogue line. `goto` names the phase the fight jumps to when it is picked. */
 export type DialogueOption = { id: string; text: string; outcome: string; goto?: string };
@@ -89,8 +92,11 @@ export const motionPresets = ['Kneels', 'Bows', 'Points', 'Raises weapon', 'Cast
 /** Lines spoken together, starting when the trigger fires. `lines` holds its steps: spoken lines and actions, in order. */
 export type Conversation = { id: string; title: string; trigger: DialogueTrigger; lines: ConversationStep[] };
 export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: 'After mechanic' };
-export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[] };
-export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[] };
+/** `timeline` orders the phase's conversations and telegraphs (by id); anything missing from it follows at the end. */
+export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[] };
+/** A write-up of one mechanic, shared by every telegraph that links to it (in any phase). */
+export type MechanicPage = { id: string; title: string; description: string };
+export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[]; pages: MechanicPage[] };
 
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
 export const isMechanic = (kind: Kind): kind is MechanicKind => kind in mechanicTypes;
@@ -111,7 +117,23 @@ export const createLine = (speaker: string): DialogueLine => ({ id: uid('line'),
 export const createConversation = (trigger: DialogueTrigger, speaker: string): Conversation => ({ id: uid('conv'), title: '', trigger, lines: [createLine(speaker)] });
 /** Every line in a phase in playing order, with the conversation it belongs to. */
 export const createAction = (actor: string): ActionStep => ({ id: uid('act'), type: 'action', actor, action: { kind: 'motion', motion: '' } });
-export const scriptOf = (phase: Phase) => phase.conversations.flatMap(conversation => conversation.lines.map(step => ({ conversation, step })));
+export type TimelineItem = { kind: 'conversation'; id: string; conversation: Conversation } | { kind: 'mechanic'; id: string; mechanic: Entity };
+
+/** Conversations and telegraphs of a phase in timeline order. */
+export function timelineOf(phase: Phase): TimelineItem[] {
+  const items = new Map<string, TimelineItem>();
+  for (const c of phase.conversations) items.set(c.id, { kind: 'conversation', id: c.id, conversation: c });
+  for (const m of phase.entities) if (isMechanic(m.kind)) items.set(m.id, { kind: 'mechanic', id: m.id, mechanic: m });
+  const ordered = (phase.timeline ?? []).flatMap(id => { const item = items.get(id); items.delete(id); return item ? [item] : []; });
+  return [...ordered, ...items.values()];
+}
+/** Every spoken line and action in the phase, in timeline order. */
+export const scriptOf = (phase: Phase) => timelineOf(phase).flatMap(item => item.kind === 'conversation' ? item.conversation.lines.map(step => ({ conversation: item.conversation, step })) : []);
+/** What present mode steps through: each line and action, and each telegraph as it comes up in the timeline. */
+export type PresentStep = { conversation: Conversation; step: ConversationStep; mechanic?: undefined } | { mechanic: Entity; conversation?: undefined; step?: undefined };
+export const presentSteps = (phase: Phase): PresentStep[] => timelineOf(phase).flatMap((item): PresentStep[] =>
+  item.kind === 'conversation' ? item.conversation.lines.map(step => ({ conversation: item.conversation, step })) : [{ mechanic: item.mechanic }]);
+export const createPage = (title: string): MechanicPage => ({ id: uid('page'), title, description: '' });
 
 const compassNames = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
 export const compassName = (deg: number) => deg % 45 === 0 ? compassNames[deg / 45] : `${deg}°`;
@@ -147,7 +169,7 @@ export function stagePhase(phase: Phase, plan: Plan, actions: ActionStep[]): Pha
   }
   return entities === phase.entities ? phase : { ...phase, entities };
 }
-export const lineCount = (phase: Phase) => phase.conversations.reduce((n, c) => n + c.lines.length, 0);
+export const lineCount = (phase: Phase) => presentSteps(phase).length;
 
 export const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 /** The enemy a boss HP trigger watches: its target, else the phase's first boss, mini-boss or add. */
@@ -279,12 +301,14 @@ export function createPlan(): Plan {
   const mech = (id: string, kind: MechanicKind, name: string, x: number, y: number, radius: number, rotation: number, anchor?: string): Entity =>
     ({ id, kind, name, code: '', x, y, radius, rotation, ...(anchor ? { anchor } : {}) });
   const scorched = baseTerrain(cols, rows).map((row, y) => row.map((t, x): Terrain => x >= 8 && x <= 11 && y >= 8 && y <= 9 ? 'lava' : t));
-  return { version: 2, name: 'The Obsidian Sanctum', cols, rows, phases: [
+  return { version: 2, name: 'The Obsidian Sanctum', cols, rows, pages: [
+    { id: 'page-cleave', title: 'Frontal cleave', description: 'The Sentinel swings at whoever is in front of it.\n\nThe main tank holds it facing away from the raid. Everyone else stays out of the cone.' },
+  ], phases: [
     { id: 'opening', name: 'The opening move', terrain: baseTerrain(cols, rows),
       notes: 'Tank holds the Sentinel facing north.\n\nSpread DPS on the flanks. Keep healers at the back, outside the impact zone.\n\nSave movement skills for the first cleave.',
       entities: [
         ...roster({ boss: [9, 3], mt: [9, 6], ot: [11, 6], h1: [6, 11], h2: [13, 11], d1: [7, 8], d2: [12, 8], d3: [8, 10], d4: [11, 10] }),
-        mech('cleave', 'cone', 'Frontal cleave', 9, 3, 4, 180, 'boss'),
+        { ...mech('cleave', 'cone', 'Frontal cleave', 9, 3, 4, 180, 'boss'), page: 'page-cleave', trigger: { type: 'time', seconds: 10 } },
         mech('impact', 'circle', 'Obsidian impact', 13, 8, 1.6, 0),
       ],
       conversations: [{ id: 'conv-wake', title: 'Awakening', trigger: { type: 'time', seconds: 0 }, lines: [
@@ -302,7 +326,7 @@ export function createPlan(): Plan {
       notes: 'Regroup at the center. Use defensive cooldowns and finish the Sentinel.',
       entities: [
         ...roster({ boss: [9, 5], mt: [9, 7], ot: [11, 7], h1: [8, 11], h2: [11, 11], d1: [9, 10], d2: [10, 10], d3: [9, 11], d4: [10, 11] }),
-        mech('cleave-2', 'cone', 'Frontal cleave', 9, 5, 3, 180, 'boss'),
+        { ...mech('cleave-2', 'cone', 'Frontal cleave', 9, 5, 3, 180, 'boss'), page: 'page-cleave', trigger: { type: 'hp', percent: 25, target: 'boss' } },
         mech('stack', 'stack', 'Stack', 9, 10, 1.6, 0),
       ],
       conversations: [{ id: 'conv-offer', title: 'The offer', trigger: { type: 'hp', percent: 30, target: 'boss' }, lines: [{ id: 'line-offer', speaker: 'Obsidian Sentinel', text: 'Kneel, and I will let the rest of you leave.', options: [
@@ -314,15 +338,16 @@ export function createPlan(): Plan {
 
 /** Upgrades a version 1 plan (shared terrain, no countdowns) to the current shape. */
 export function migratePlan(value: unknown): unknown {
-  const p = value as { version?: number; terrain?: unknown; phases?: { entities?: Record<string, unknown>[]; dialogue?: unknown; conversations?: unknown }[] };
+  const p = value as { version?: number; terrain?: unknown; pages?: unknown; phases?: { entities?: Record<string, unknown>[]; dialogue?: unknown; conversations?: unknown }[] };
   if (!p || typeof p !== 'object' || !Array.isArray(p.phases)) return value;
   if (p.version === 2) {
-    const clean = p.phases.every(f => f && Array.isArray(f.conversations) && !('turns' in f) && !(f.entities ?? []).some(e => e && 'turns' in e));
-    return clean ? value : { ...p, phases: p.phases.map(f => f && withoutTurns(Array.isArray(f.conversations) ? f : toConversations(f))) };
+    const clean = Array.isArray(p.pages) && p.phases.every(f => f && Array.isArray(f.conversations) && !('turns' in f) && !(f.entities ?? []).some(e => e && 'turns' in e));
+    // Plans from before mechanic pages start with none.
+    return clean ? value : { ...p, pages: Array.isArray(p.pages) ? p.pages : [], phases: p.phases.map(f => f && withoutTurns(Array.isArray(f.conversations) ? f : toConversations(f))) };
   }
   if (p.version !== 1) return value;
   return {
-    ...p, version: 2, terrain: undefined,
+    ...p, version: 2, terrain: undefined, pages: [],
     phases: p.phases.map(f => withoutTurns({ ...f, terrain: p.terrain, conversations: [], entities: Array.isArray(f.entities) ? f.entities.map(e => ({ code: '', ...e })) : f.entities })),
   };
 }
@@ -364,8 +389,11 @@ export function validatePlan(value: unknown): value is Plan {
     (s.action.kind === 'move' && int(s.action.x, 0, p.cols - 1) && int(s.action.y, 0, p.rows - 1)));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&
+    Array.isArray(p.pages) && p.pages.length <= 200 && new Set(p.pages.map(g => g?.id)).size === p.pages.length &&
+    p.pages.every(g => g && typeof g.id === 'string' && typeof g.title === 'string' && g.title.length <= 120 && typeof g.description === 'string' && g.description.length <= 20000) &&
     Array.isArray(p.phases) && p.phases.length > 0 && p.phases.length <= 30 && new Set(p.phases.map(f => f?.id)).size === p.phases.length &&
     p.phases.every(f => f && typeof f.id === 'string' && typeof f.name === 'string' && f.name.length <= 120 && typeof f.notes === 'string' && f.notes.length <= 10000 &&
+      (f.timeline === undefined || (Array.isArray(f.timeline) && f.timeline.length <= 1000 && f.timeline.every(id => typeof id === 'string'))) &&
       Array.isArray(f.terrain) && f.terrain.length === p.rows && f.terrain.every(row => Array.isArray(row) && row.length === p.cols && row.every(t => Object.hasOwn(terrainTypes, t))) &&
       Array.isArray(f.entities) && f.entities.length <= 500 && new Set(f.entities.map(e => e?.id)).size === f.entities.length &&
       f.entities.every(e => e && typeof e.id === 'string' && typeof e.name === 'string' && e.name.length <= 120 && typeof e.code === 'string' && e.code.length <= 6 &&
@@ -373,7 +401,7 @@ export function validatePlan(value: unknown): value is Plan {
         int(e.x, 0, p.cols - footprint(e)) && int(e.y, 0, p.rows - footprint(e)) &&
         Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
         num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
-        (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean')) &&
+        (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string')) &&
       Array.isArray(f.conversations) && f.conversations.length <= 100 && new Set(f.conversations.map(c => c?.id)).size === f.conversations.length &&
       f.conversations.every(c => c && typeof c.id === 'string' && typeof c.title === 'string' && c.title.length <= 120 && validTrigger(c.trigger) &&
         Array.isArray(c.lines) && c.lines.length <= 200 && new Set(c.lines.map(l => l?.id)).size === c.lines.length &&
