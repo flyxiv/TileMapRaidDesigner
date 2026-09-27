@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand
 import { Fragment, useRef, useState } from 'react';
 import { BattleMap } from './BattleMap';
 import { MapPreviews } from './MapPreview';
+import { CastTimeField } from './CastTimeField';
 import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
 import { pageMaps, pageText, scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
@@ -562,6 +563,7 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
       </header>
       <div className="mechanic-item-kind">Mechanic · {mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</div>
       <TriggerFields phase={phase} trigger={m.trigger} exclude={m.id} onChange={(t, key) => onChange({ trigger: t }, key && `${key}-${m.id}`)} />
+      <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />
       <div className="page-link">
         <BookOpen size={13} />
         <select aria-label="Mechanic page" value={page ? page.id : ''} onChange={e => {

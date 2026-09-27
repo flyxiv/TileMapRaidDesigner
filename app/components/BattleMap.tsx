@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -247,7 +247,7 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   else if (m.infinite) y = oy + 1.2;
   else if (anchor) y = oy + Math.min(m.radius, 1.6) + 0.35; // keep the label off the targeted unit
   const tone = mechanicTone(m);
-  const label = m.kind === 'tower' ? `${m.name} ×${m.soak ?? 1}` : m.name;
+  const label = [m.kind === 'tower' ? `${m.name} ×${m.soak ?? 1}` : m.name, castLabel(m)].filter(Boolean).join(' · ');
   const w = label.length * 5.9 + 16, h = 22;
   return (
     <g data-entity={m.id} className={`mech-label${selected ? ' selected' : ''}`} transform={`translate(${x * C - w / 2} ${y * C - h / 2})`}>

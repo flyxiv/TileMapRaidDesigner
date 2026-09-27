@@ -517,3 +517,7 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .pages-item b .event-icon, .mech-chip .event-icon, .script-conversation-head .event-icon { width: 18px; height: 18px; border-radius: 5px; vertical-align: middle; }
 .components-title { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
 .menu-heading { padding: 6px 10px 2px; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+.cast-time { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.cast-time .unit-input { gap: 8px; }
+.cast-time .icon-button { width: 24px; height: 24px; }
+.script-cast { font-size: 10px; font-weight: 700; letter-spacing: .6px; padding: 2px 6px; border-radius: 3px; background: #3b3322; color: var(--tele); }

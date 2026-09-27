@@ -1,7 +1,7 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight, Footprints, Hand, RotateCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { conversationScenes, sceneAtStep, diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
+import { castLabel, conversationScenes, sceneAtStep, diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
@@ -97,7 +97,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                     <div key={m.id} className={`script-mechanic${li === line ? ' active' : ''}`} style={{ '--tone': mechanicTone(m) } as React.CSSProperties} onClick={() => setCursor({ phase: index, line: li })}>
                       <div className="script-conversation-head">
                         <span className="script-turn">{m.trigger ? triggerLabel(m.trigger, phase).toUpperCase() : 'MECHANIC'}</span>
-                        <EventIcon kind="mechanic" size={12} /><b>{m.name}</b>
+                        <EventIcon kind="mechanic" size={12} /><b>{m.name}</b>{m.castTime !== undefined && <span className="script-cast">{castLabel(m)} cast</span>}
                       </div>
                       {li === line && page && page.blocks.length > 0 && (
                         <div className="script-mechanic-blocks">
