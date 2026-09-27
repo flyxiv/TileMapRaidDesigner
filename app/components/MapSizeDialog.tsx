@@ -2,6 +2,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { countDisplaced, terrainTypes, type Plan, type Terrain } from '../plan';
+import { IntInput } from './IntInput';
 
 const clampSize = (n: number) => Math.max(8, Math.min(30, Math.round(n) || 8));
 const anchors: [number, number][] = [[0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.5, 0.5], [1, 0.5], [0, 1], [0.5, 1], [1, 1]];
@@ -30,8 +31,8 @@ export function MapSizeDialog({ plan, onClose, onApply }: { plan: Plan; onClose:
         <h2 id="size-title">Map size</h2>
         <p className="hint">Currently {plan.cols} × {plan.rows} tiles. Changes apply to every phase and can be undone.</p>
         <div className="field-grid">
-          <label className="field">Columns<input type="number" min={8} max={30} value={cols} onChange={e => setCols(Number(e.target.value))} onBlur={() => setCols(c)} /></label>
-          <label className="field">Rows<input type="number" min={8} max={30} value={rows} onChange={e => setRows(Number(e.target.value))} onBlur={() => setRows(r)} /></label>
+          <label className="field">Columns<IntInput min={8} max={30} value={cols} onChange={setCols} /></label>
+          <label className="field">Rows<IntInput min={8} max={30} value={rows} onChange={setRows} /></label>
         </div>
         <div className="size-anchor-row">
           <div className="field">

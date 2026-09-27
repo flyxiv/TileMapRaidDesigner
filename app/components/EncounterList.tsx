@@ -8,6 +8,7 @@ import { createPlan } from '../plan';
 import type { Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { Logo } from './glyphs';
+import { IntInput } from './IntInput';
 
 type Row = EncounterMeta & { plan: Plan | null };
 
@@ -171,8 +172,8 @@ function NewEncounterDialog({ onClose, onCreate }: { onClose: () => void; onCrea
             ))}
           </div>
           <div className="field-grid">
-            <label className="field">Columns<input type="number" min={8} max={30} value={cols} onChange={e => setCols(Number(e.target.value))} onBlur={() => setCols(clampSize(cols))} /></label>
-            <label className="field">Rows<input type="number" min={8} max={30} value={rows} onChange={e => setRows(Number(e.target.value))} onBlur={() => setRows(clampSize(rows))} /></label>
+            <label className="field">Columns<IntInput min={8} max={30} value={cols} onChange={setCols} /></label>
+            <label className="field">Rows<IntInput min={8} max={30} value={rows} onChange={setRows} /></label>
           </div>
         </div>
         <div className="field">

@@ -276,7 +276,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   /** Adds a unit or telegraph at a tile, or paints one brush of terrain, as one undo step. */
   /** `extra` overrides the new telegraph's defaults, e.g. the name and page it gets when placed from a mechanic page. */
-  const spawn = (item: Tool, tile: [number, number], extra?: Partial<Entity>, t: Target = activeTarget, placeInTimeline = true) => {
+  const spawn = (item: Tool, tile: [number, number], extra?: Partial<Entity>, t: Target = activeTarget) => {
     const tphase = phaseFor(t);
     setActiveTarget(t);
     if (item.type === 'terrain') { if (!mechOf(t)) commit(pl => paintOn(pl, t, brushTiles(...tile), item.terrain)); return; }
@@ -295,16 +295,11 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     } else return;
     if (isMechanic(e.kind)) {
       if (mechOf(t) === null && t !== 'base' && !phase.conversations.some(c => c.id === t)) t = 'base';
-      const after = t === 'base' ? null : mechOf(t) ?? t;
       const created = e;
       commit(pl => {
         const added = updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, created] }));
-        if (!placeInTimeline) return added;
-        return updatePhase(added, pi, f => {
-          const ids = timelineOf(f).map(i => i.id).filter(id => id !== created.id);
-          const at = after ? ids.indexOf(after) + 1 : 0;
-          return { ...f, timeline: [...ids.slice(0, at), created.id, ...ids.slice(at)] };
-        });
+        // New events go to the bottom of the timeline.
+        return updatePhase(added, pi, f => ({ ...f, timeline: [...timelineOf(f).map(i => i.id).filter(id => id !== created.id), created.id] }));
       });
       setActiveTarget(mechTarget(e.id));
       setSelectedId(e.id);
@@ -744,7 +739,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                     return [cx, cy];
                   };
                   const tile: [number, number] = aims(kind) && boss ? [boss.x, boss.y] : freeNearCenter();
-                  const id2 = spawn({ type: 'mechanic', kind }, tile, extra, 'base', false);
+                  const id2 = spawn({ type: 'mechanic', kind }, tile, extra, 'base');
                   requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id2}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
                 }}
                 pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}

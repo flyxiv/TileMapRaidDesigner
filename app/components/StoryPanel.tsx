@@ -6,6 +6,7 @@ import { MapPreviews } from './MapPreview';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
 import { EventIcon } from './EventIcon';
+import { IntInput } from './IntInput';
 import { Glyph } from './glyphs';
 import { diagramPlan, pageMaps, pageText, scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
@@ -229,7 +230,8 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
     // A new conversation starts from the previous one's trigger so follow-ups are quick to set up.
     const last = conversations[conversations.length - 1];
     const conversation = createConversation(last ? { ...last.trigger } : { type: 'time', seconds: 0 }, defaultSpeaker);
-    onChange(cs => [...cs, conversation]);
+    // At the bottom of the timeline, after every event already there.
+    onPhase(f => ({ ...f, conversations: [...f.conversations, conversation], timeline: [...idsOf(f), conversation.id] }));
     onActivate(conversation.lines[0].id);
   };
 
@@ -510,7 +512,6 @@ function LineCard({ plan, phase, phaseIndex, line: l, index, count, active, onAc
   );
 }
 
-const clampInt = (v: string, min: number, max: number) => Math.max(min, Math.min(max, Math.round(Number(v)) || 0));
 
 function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase; trigger?: DialogueTrigger; onChange: (t: DialogueTrigger | undefined, coalesceKey?: string) => void; exclude?: string }) {
   const enemies = phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === 'enemies');
@@ -532,14 +533,14 @@ function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase;
           {enemies.length === 0 && <option value="">No enemies on the map</option>}
           {enemies.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
-        <label className="unit-input"><input aria-label="HP percent" type="number" min={0} max={100} value={t.percent} onChange={e => onChange({ ...t, percent: clampInt(e.target.value, 0, 100) }, 'hp')} />%</label>
+        <label className="unit-input"><IntInput aria-label="HP percent" min={0} max={100} value={t.percent} onChange={v => onChange({ ...t, percent: v }, 'hp')} />%</label>
       </>}
       {t?.type === 'time' && <>
-        <label className="unit-input"><input aria-label="Minutes" type="number" min={0} max={99} value={Math.floor(t.seconds / 60)} onChange={e => onChange({ ...t, seconds: clampInt(e.target.value, 0, 99) * 60 + (t.seconds % 60) }, 'min')} />m</label>
-        <label className="unit-input"><input aria-label="Seconds" type="number" min={0} max={59} value={t.seconds % 60} onChange={e => onChange({ ...t, seconds: Math.floor(t.seconds / 60) * 60 + clampInt(e.target.value, 0, 59) }, 'sec')} />s</label>
+        <label className="unit-input"><IntInput aria-label="Minutes" min={0} max={99} value={Math.floor(t.seconds / 60)} onChange={v => onChange({ ...t, seconds: v * 60 + (t.seconds % 60) }, 'min')} />m</label>
+        <label className="unit-input"><IntInput aria-label="Seconds" min={0} max={59} value={t.seconds % 60} onChange={v => onChange({ ...t, seconds: Math.floor(t.seconds / 60) * 60 + v }, 'sec')} />s</label>
       </>}
       {t?.type === 'mechanic' && <>
-        <label className="unit-input"><input aria-label="Seconds after" type="number" min={0} max={5999} value={t.seconds} onChange={e => onChange({ ...t, seconds: clampInt(e.target.value, 0, 5999) }, 'after')} />s after</label>
+        <label className="unit-input"><IntInput aria-label="Seconds after" min={0} max={5999} value={t.seconds} onChange={v => onChange({ ...t, seconds: v }, 'after')} />s after</label>
         <select aria-label="Mechanic" className="grow" value={mechanics.some(m => m.id === t.mechanic) ? t.mechanic : ''} onChange={e => onChange({ ...t, mechanic: e.target.value })}>
           {!mechanics.some(m => m.id === t.mechanic) && <option value="">{mechanics.length ? 'Pick a mechanic' : 'No mechanics in this phase'}</option>}
           {mechanics.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
