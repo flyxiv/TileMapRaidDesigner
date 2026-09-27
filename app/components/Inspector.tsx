@@ -99,6 +99,10 @@ function UnitFields({ plan, phase, prevPhase, u, onChange }: { plan: Plan; phase
       </label>
     </div>
     <PositionFields plan={plan} e={u} onChange={onChange} />
+    <label className="field">
+      <span className="field-line">Facing <b>{facingLabel(u.rotation)}</b></span>
+      <input type="range" min={0} max={315} step={45} value={u.rotation - (u.rotation % 45)} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${u.id}`)} />
+    </label>
     {moved && <div className="move-note"><span>Moves this phase</span><b>{tileLabel(before.x, before.y)} → {tileLabel(u.x, u.y)}</b></div>}
     {phase.entities.some(e => e.anchor === u.id) && <p className="hint">Telegraphs attached to this unit move with it.</p>}
   </>;

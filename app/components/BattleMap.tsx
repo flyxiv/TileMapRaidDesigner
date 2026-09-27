@@ -4,7 +4,10 @@ import { center, colLabel, footprint, hazardTiles, isMechanic, isUnit, mechanicO
 import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
-export type MapPointer = { type: 'down' | 'move' | 'up'; tile: [number, number] | null; entityId?: string; event: ReactPointerEvent<SVGSVGElement> };
+/**
+ * `point` is the pointer in tile units (fractional); `rotateId` is set when a press starts on a unit's rotation handle.
+ */
+export type MapPointer = { type: 'down' | 'move' | 'up'; tile: [number, number] | null; point: [number, number] | null; entityId?: string; rotateId?: string; event: ReactPointerEvent<SVGSVGElement> };
 
 type Props = {
   plan: Plan;
@@ -50,8 +53,16 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   };
   const handle = (type: MapPointer['type']) => onPointer && ((event: ReactPointerEvent<SVGSVGElement>) => {
     const target = (event.target as Element).closest('[data-entity]');
+    const rotate = (event.target as Element).closest('[data-rotate]');
+    const ctm = event.currentTarget.getScreenCTM();
+    const pt = ctm && new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
+    const point: [number, number] | null = pt ? [(pt.x - G) / C, (pt.y - G) / C] : null;
     if (type === 'down') event.currentTarget.setPointerCapture(event.pointerId);
-    onPointer({ type, tile: toTile(event), entityId: type === 'down' ? target?.getAttribute('data-entity') ?? undefined : undefined, event });
+    onPointer({
+      type, tile: toTile(event), point, event,
+      entityId: type === 'down' ? target?.getAttribute('data-entity') ?? undefined : undefined,
+      rotateId: type === 'down' ? rotate?.getAttribute('data-rotate') ?? undefined : undefined,
+    });
   });
 
   const moves = showMoves && prev ? units.flatMap(u => {
@@ -234,6 +245,8 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   );
 }
 
+const compass = (deg: number) => deg % 45 === 0 ? ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][deg / 45] : `${deg}°`;
+
 function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean }) {
   const type = unitTypes[u.kind as keyof typeof unitTypes];
   const big = footprint(u) > 1, heavy = big || u.kind === 'miniboss';
@@ -241,16 +254,21 @@ function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean
   // Tokens fill their whole footprint, inset just enough to keep the tile grid visible.
   const tiny = C < 12, inset = Math.min(2, C * 0.08), size = footprint(u) * C - inset * 2, r = size / 2, rx = Math.max(1, C * (big ? 0.18 : 0.14));
   const icon = Math.round(size * (big ? 0.46 : 0.54));
+  // Facing, in compass degrees (0 = up): the icon turns with it and a notch marks the front edge.
+  const turn = `rotate(${u.rotation} ${cx} ${cy})`, notch = Math.max(3, Math.min(C * 0.2, r * 0.35)), handleAt = r + Math.max(10, C * 0.4);
   return (
-    <g data-entity={u.id} style={{ cursor: 'grab' }} aria-label={`${u.name}, ${tileLabel(u.x, u.y)}`}>
+    <g data-entity={u.id} style={{ cursor: 'grab' }} aria-label={`${u.name}, ${tileLabel(u.x, u.y)}, facing ${compass(u.rotation)}`}>
       {selected && <rect x={cx - r - 3} y={cy - r - 3} width={size + 6} height={size + 6} rx={rx + 3} fill="none" stroke={tones.safe} strokeWidth="2" />}
       <rect x={cx - r} y={cy - r + 1.5} width={size} height={size} rx={rx} fill="rgba(0,0,0,0.35)" />
       {tiny
         ? <rect x={cx - r} y={cy - r} width={size} height={size} rx={rx} fill={type.color} />
         : <rect x={cx - r + 1} y={cy - r + 1} width={size - 2} height={size - 2} rx={rx} fill={type.fill} stroke={type.color} strokeWidth={heavy ? 2.5 : 2} />}
-      {!tiny && <svg x={cx - icon / 2} y={cy - icon / 2} width={icon} height={icon} viewBox="0 0 24 24" fill="none" stroke={type.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
-        <path d={glyphs[u.kind]} />
-      </svg>}
+      {!tiny && <g transform={turn}>
+        <svg x={cx - icon / 2} y={cy - icon / 2} width={icon} height={icon} viewBox="0 0 24 24" fill="none" stroke={type.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
+          <path d={glyphs[u.kind]} />
+        </svg>
+        <path d={`M${cx} ${cy - r + 2.5} L${cx + notch} ${cy - r + 2.5 + notch} L${cx - notch} ${cy - r + 2.5 + notch} Z`} fill={type.color} />
+      </g>}
       {!big && C >= 28 && u.code && (
         <g transform={`translate(${cx} ${cy + r - 1})`}>
           <rect x={-(u.code.length * 3 + 5)} y={-5} width={u.code.length * 6 + 10} height={11} rx="3" fill="#0f1314" stroke={type.color} />
@@ -261,6 +279,15 @@ function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean
         <g transform={`translate(${cx} ${u.y * C - 6})`}>
           <rect x={-(u.name.length * 3.1 + 9)} y={-18} width={u.name.length * 6.2 + 18} height={18} rx="4" fill="#2a1c18" stroke={type.color} />
           <text textAnchor="middle" dominantBaseline="central" y={-8.5} fontSize="10" fontWeight="600" fill="#f1c4b5" fontFamily="'Space Grotesk', sans-serif">{u.name}</text>
+        </g>
+      )}
+      {/* Drawn last so the name tag never covers it. */}
+      {selected && !tiny && (
+        <g transform={turn} data-rotate={u.id} style={{ cursor: 'crosshair' }}>
+          <title>Drag to rotate</title>
+          <line x1={cx} y1={cy - r - 3} x2={cx} y2={cy - handleAt + 5} stroke={tones.safe} strokeWidth="1.5" />
+          <circle cx={cx} cy={cy - handleAt} r={6} fill="#141819" stroke={tones.safe} strokeWidth="2" />
+          <circle cx={cx} cy={cy - handleAt} r={12} fill="transparent" />
         </g>
       )}
     </g>

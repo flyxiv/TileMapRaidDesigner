@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  clampEntity, createMechanic, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  center, clampEntity, createMechanic, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -17,7 +17,7 @@ import { StoryPanel } from './StoryPanel';
 
 type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
 type History = { past: Plan[]; present: Plan; future: Plan[] };
-type Gesture = { base: Plan; mode: 'drag' | 'paint'; id?: string; offset?: [number, number] };
+type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate'; id?: string; offset?: [number, number] };
 
 const BASE_CELL = 32;
 const zoomSteps = [0.5, 0.625, 0.75, 0.875, 1, 1.25, 1.5, 1.75, 2];
@@ -171,6 +171,15 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       const g = gesture.current;
       if (!g || !p.tile) return;
       if (g.mode === 'paint' && tool.type === 'terrain') preview(pl => paint(pl, pi, paintAll, brushTiles(...p.tile!), tool.terrain));
+      if (g.mode === 'rotate' && g.id && p.point) {
+        // Point the unit at the cursor, snapped to the 8 compass directions.
+        const u = phase.entities.find(e => e.id === g.id);
+        if (u) {
+          const [cx, cy] = center(u), deg = (Math.atan2(p.point[0] - cx, -(p.point[1] - cy)) * 180) / Math.PI;
+          const rotation = ((Math.round(deg / 45) * 45) % 360 + 360) % 360;
+          if (rotation !== u.rotation) preview(pl => updatePhase(pl, pi, f => ({ ...f, entities: f.entities.map(e => e.id === g.id ? { ...e, rotation } : e) })));
+        }
+      }
       if (g.mode === 'drag' && g.id && g.offset) {
         const [x, y] = [p.tile[0] - g.offset[0], p.tile[1] - g.offset[1]];
         preview(pl => updatePhase(pl, pi, f => ({ ...f, entities: f.entities.map(e => e.id === g.id ? clampEntity({ ...e, x, y }, pl) : e) })));
@@ -181,6 +190,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     const hit = p.entityId ? phase.entities.find(e => e.id === p.entityId) : tile ? entityAt(phase, ...tile) : undefined;
     switch (tool.type) {
       case 'select': {
+        if (p.rotateId) { gesture.current = { base: presentRef.current, mode: 'rotate', id: p.rotateId }; break; }
         setSelectedId(hit?.id ?? null);
         if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { base: presentRef.current, mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
         break;
@@ -276,6 +286,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       if (mod) return;
       if (k === 'v' || k === 'escape') { setTool({ type: 'select' }); if (k === 'escape') { setSelectedId(null); setShortcuts(false); setMenu(false); } }
       else if (k === 'e') setTool({ type: 'erase' });
+      else if (k === 'r' && selected && isUnit(selected.kind)) patchEntity(selected.id, { rotation: (selected.rotation + (e.shiftKey ? 315 : 45)) % 360 }, `rotate-${selected.id}`);
       else if (k === 't') setTool(tl => tl.type === 'terrain' ? tl : { type: 'terrain', terrain: 'floor' });
       else if (k === 'u') setTool(tl => tl.type === 'unit' ? tl : { type: 'unit', kind: 'dps' });
       else if (k === 'm') setTool(tl => tl.type === 'mechanic' ? tl : { type: 'mechanic', kind: 'circle' });
@@ -519,7 +530,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <button type="button" className="icon-button dialog-close" aria-label="Close" onClick={() => setShortcuts(false)}><X size={16} /></button>
             <h2 id="shortcuts-title">Keyboard shortcuts</h2>
             <dl>
-              {[['V', 'Select and move'], ['E', 'Erase'], ['T / U / M', 'Terrain, unit, mechanic tools'], ['Arrow keys', 'Nudge selection one tile'], ['Delete', 'Remove selection'],
+              {[['V', 'Select and move'], ['E', 'Erase'], ['T / U / M', 'Terrain, unit, mechanic tools'], ['Arrow keys', 'Nudge selection one tile'], ['R / Shift+R', 'Rotate unit 45°'], ['Delete', 'Remove selection'],
                 ['[ and ]', 'Previous / next phase'], ['Ctrl+Z', 'Undo'], ['Ctrl+Shift+Z', 'Redo'], ['P', 'Present mode'], ['Esc', 'Deselect']].map(([k, v]) => (
                 <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>
               ))}
