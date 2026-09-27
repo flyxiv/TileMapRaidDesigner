@@ -181,16 +181,18 @@ function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean
   const big = u.kind === 'boss';
   const [cx, cy] = center(u).map(v => v * C);
   // Tokens fill their whole footprint, inset just enough to keep the tile grid visible.
-  const inset = 2, size = footprint(u) * C - inset * 2, r = size / 2, rx = Math.max(3, C * (big ? 0.18 : 0.14));
+  const tiny = C < 12, inset = Math.min(2, C * 0.08), size = footprint(u) * C - inset * 2, r = size / 2, rx = Math.max(1, C * (big ? 0.18 : 0.14));
   const icon = Math.round(size * (big ? 0.46 : 0.54));
   return (
     <g data-entity={u.id} style={{ cursor: 'grab' }} aria-label={`${u.name}, ${tileLabel(u.x, u.y)}`}>
       {selected && <rect x={cx - r - 3} y={cy - r - 3} width={size + 6} height={size + 6} rx={rx + 3} fill="none" stroke={tones.safe} strokeWidth="2" />}
       <rect x={cx - r} y={cy - r + 1.5} width={size} height={size} rx={rx} fill="rgba(0,0,0,0.35)" />
-      <rect x={cx - r + 1} y={cy - r + 1} width={size - 2} height={size - 2} rx={rx} fill={type.fill} stroke={type.color} strokeWidth={big ? 2.5 : 2} />
-      <svg x={cx - icon / 2} y={cy - icon / 2} width={icon} height={icon} viewBox="0 0 24 24" fill="none" stroke={type.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
+      {tiny
+        ? <rect x={cx - r} y={cy - r} width={size} height={size} rx={rx} fill={type.color} />
+        : <rect x={cx - r + 1} y={cy - r + 1} width={size - 2} height={size - 2} rx={rx} fill={type.fill} stroke={type.color} strokeWidth={big ? 2.5 : 2} />}
+      {!tiny && <svg x={cx - icon / 2} y={cy - icon / 2} width={icon} height={icon} viewBox="0 0 24 24" fill="none" stroke={type.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
         <path d={glyphs[u.kind]} />
-      </svg>
+      </svg>}
       {!big && C >= 28 && u.code && (
         <g transform={`translate(${cx} ${cy + r - 1})`}>
           <rect x={-(u.code.length * 3 + 5)} y={-5} width={u.code.length * 6 + 10} height={11} rx="3" fill="#0f1314" stroke={type.color} />

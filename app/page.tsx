@@ -1,5 +1,5 @@
-import { Editor } from './components/Editor';
+import { EncounterList } from './components/EncounterList';
 
 export default function Home() {
-  return <Editor />;
+  return <EncounterList />;
 }

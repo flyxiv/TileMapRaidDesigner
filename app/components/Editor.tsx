@@ -1,10 +1,13 @@
 'use client';
-import { Copy, Download, Eraser, FileJson, Image as ImageIcon, Keyboard, Minus, MousePointer2, Play, Plus, Redo2, RotateCcw, Trash2, Undo2, Upload, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Copy, Download, Eraser, FileJson, Image as ImageIcon, Keyboard, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  clampEntity, createMechanic, createPlan, entityAt, isMechanic, isUnit, mechanicTypes, migratePlan, nextCode, phaseTurnRanges,
-  terrainTypes, tileLabel, turnRangeText, uid, unitTypes, validatePlan, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
+  clampEntity, createMechanic, entityAt, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
+import { duplicateEncounter, saveEncounter } from '../library';
 import { BattleMap, type MapPointer } from './BattleMap';
 import { Glyph, Logo } from './glyphs';
 import { Inspector } from './Inspector';
@@ -14,7 +17,6 @@ type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain:
 type History = { past: Plan[]; present: Plan; future: Plan[] };
 type Gesture = { base: Plan; mode: 'drag' | 'paint'; id?: string; offset?: [number, number] };
 
-const STORAGE_KEY = 'raid-designer:plan';
 const BASE_CELL = 32;
 const zoomSteps = [0.5, 0.625, 0.75, 0.875, 1, 1.25, 1.5, 1.75, 2];
 
@@ -42,14 +44,24 @@ function download(name: string, blob: Blob) {
 }
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'raid-plan';
 
-export function Editor() {
-  const [hist, setHist] = useState<History>(() => ({ past: [], present: createPlan(), future: [] }));
+export function Editor({ encounterId, initialPlan }: { encounterId: string; initialPlan: Plan }) {
+  const router = useRouter();
+  const [hist, setHist] = useState<History>(() => ({ past: [], present: initialPlan, future: [] }));
   const [phaseIndex, setPhaseIndex] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>('cleave');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>({ type: 'select' });
   const [brush, setBrush] = useState(1);
   const [paintAll, setPaintAll] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  /** Largest zoom step (up to 100%) at which the whole map fits the viewport. */
+  const fitZoom = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const fit = Math.min((el.clientWidth - 48) / (initialPlan.cols * BASE_CELL + 20), (el.clientHeight - 68) / (initialPlan.rows * BASE_CELL + 20));
+    setZoom([...zoomSteps].reverse().find(z => z <= Math.min(1, fit)) ?? zoomSteps[0]);
+  }, [initialPlan.cols, initialPlan.rows]);
+  useLayoutEffect(fitZoom, [fitZoom]);
   const [layers, setLayers] = useState({ terrain: true, telegraphs: true, moves: true });
   const [hover, setHover] = useState<[number, number] | null>(null);
   const [presenting, setPresenting] = useState(false);
@@ -57,13 +69,11 @@ export function Editor() {
   const [toast, setToast] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
-  const loaded = useRef(false);
   const gesture = useRef<Gesture | null>(null);
   const lastEdit = useRef<{ key: string; at: number } | null>(null);
   const presentRef = useRef(hist.present);
   presentRef.current = hist.present;
   const mapRef = useRef<SVGSVGElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const plan = hist.present;
   const pi = Math.min(phaseIndex, plan.phases.length - 1);
@@ -93,25 +103,23 @@ export function Editor() {
   const undo = useCallback(() => { lastEdit.current = null; setHist(h => h.past.length ? { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future] } : h); }, []);
   const redo = useCallback(() => { lastEdit.current = null; setHist(h => h.future.length ? { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) } : h); }, []);
 
-  // Load the saved plan once, then autosave on change.
+  // Flush unsaved edits when leaving the editor or closing the tab.
+  const latest = useRef(plan);
+  latest.current = plan;
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = migratePlan(JSON.parse(raw));
-        if (validatePlan(saved)) { setHist({ past: [], present: saved, future: [] }); setSelectedId(null); }
-      }
-    } catch { /* storage unavailable or corrupt: keep the sample plan */ }
-    loaded.current = true;
-  }, []);
+    const flush = () => { if (latest.current !== initialPlan) try { saveEncounter(encounterId, latest.current); } catch { /* storage full or blocked */ } };
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('pagehide', flush); flush(); };
+  }, [encounterId, initialPlan]);
+  // Autosave after edits settle.
   useEffect(() => {
-    if (!loaded.current) return;
+    if (plan === initialPlan) return;
     setSaveState('saving');
     const t = setTimeout(() => {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(plan)); setSaveState('saved'); } catch { setSaveState('error'); }
+      try { saveEncounter(encounterId, plan); setSaveState('saved'); } catch { setSaveState('error'); }
     }, 400);
     return () => clearTimeout(t);
-  }, [plan]);
+  }, [plan, initialPlan, encounterId]);
 
   const patchEntity = useCallback((id: string, patch: Partial<Entity>, key?: string) => {
     commit(p => updatePhase(p, pi, f => ({ ...f, entities: f.entities.map(e => e.id === id ? clampEntity({ ...e, ...patch }, p) : e) })), key);
@@ -214,19 +222,13 @@ export function Editor() {
     img.onerror = () => notify('Could not render the map image');
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
   };
-  const importJson = async (file: File) => {
-    try {
-      const data = migratePlan(JSON.parse(await file.text()));
-      if (!validatePlan(data)) throw new Error('invalid');
-      commit(() => data);
-      setPhaseIndex(0); setSelectedId(null);
-      notify(`Imported "${data.name}"`);
-    } catch { notify('That file is not a valid raid plan'); }
-  };
-  const resetSample = () => {
+  const duplicate = () => {
     setMenu(false);
-    if (!confirm('Replace this plan with the sample encounter? You can undo this.')) return;
-    commit(() => createPlan()); setPhaseIndex(0); setSelectedId(null);
+    try {
+      saveEncounter(encounterId, plan);
+      const id = duplicateEncounter(encounterId);
+      if (id) router.push(`/encounters/${id}`);
+    } catch { notify('Could not duplicate this encounter'); }
   };
 
   // Keyboard shortcuts (ignored while typing in a field).
@@ -273,12 +275,10 @@ export function Editor() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand"><Logo /><span>Raid<em>Designer</em></span></div>
-        <nav className="crumb" aria-label="Breadcrumb"><span>Encounters</span><i>/</i><b>{plan.name}</b></nav>
+        <Link href="/" className="brand"><Logo /><span>Raid<em>Designer</em></span></Link>
+        <nav className="crumb" aria-label="Breadcrumb"><Link href="/">Encounters</Link><i>/</i><b>{plan.name}</b></nav>
         <div className="header-actions">
           <span className={`save-status ${saveState}`}><i />{saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Not saved'}</span>
-          <button type="button" className="button" onClick={() => fileRef.current?.click()}><Upload size={14} /> Import</button>
-          <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = ''; }} />
           <div className="menu-wrap">
             <button type="button" className="button" aria-expanded={menu} aria-haspopup="menu" onClick={() => setMenu(m => !m)}><Download size={14} /> Export</button>
             {menu && (
@@ -286,7 +286,7 @@ export function Editor() {
                 <button type="button" role="menuitem" onClick={exportPng}><ImageIcon size={14} /> Current phase as PNG</button>
                 <button type="button" role="menuitem" onClick={exportJson}><FileJson size={14} /> Plan as JSON</button>
                 <hr />
-                <button type="button" role="menuitem" onClick={resetSample}><RotateCcw size={14} /> Reset to sample encounter</button>
+                <button type="button" role="menuitem" onClick={duplicate}><Copy size={14} /> Duplicate encounter</button>
               </div>
             )}
           </div>
@@ -299,7 +299,7 @@ export function Editor() {
           <div className="project-heading">
             <label className="eyebrow" htmlFor="plan-name">Encounter</label>
             <input id="plan-name" className="plan-name" value={plan.name} maxLength={120} onChange={e => commit(p => ({ ...p, name: e.target.value }), 'plan-name')} />
-            <div className="badges"><span>{plan.cols} × {plan.rows} tiles</span><span>{plan.phases.length} phases</span></div>
+            <div className="badges"><span>{plan.cols} × {plan.rows} tiles</span><span>{plan.phases.length} phase{plan.phases.length > 1 ? 's' : ''}</span></div>
           </div>
           <div className="tool-sections">
             <section>
@@ -373,12 +373,12 @@ export function Editor() {
             </div>
             <div className="toolbar-group">
               <button type="button" className="icon-button" aria-label="Zoom out" disabled={zoom <= zoomSteps[0]} onClick={() => setZoom(z => zoomSteps[Math.max(0, zoomSteps.indexOf(z) - 1)])}><Minus size={15} /></button>
-              <button type="button" className="zoom-label" title="Reset zoom" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+              <button type="button" className="zoom-label" title="Fit map to screen" onClick={fitZoom}>{Math.round(zoom * 100)}%</button>
               <button type="button" className="icon-button" aria-label="Zoom in" disabled={zoom >= zoomSteps[zoomSteps.length - 1]} onClick={() => setZoom(z => zoomSteps[Math.min(zoomSteps.length - 1, zoomSteps.indexOf(z) + 1)])}><Plus size={15} /></button>
             </div>
           </div>
 
-          <div className={`map-viewport tool-${tool.type}`}>
+          <div ref={viewportRef} className={`map-viewport tool-${tool.type}`}>
             <div className="map-scroll">
               <BattleMap
                 ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={selectedId}
