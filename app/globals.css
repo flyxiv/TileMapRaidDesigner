@@ -334,3 +334,11 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .badges button { font-size: 9px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; padding: 3px 6px; border-radius: 3px; background: #2b3131; color: #aeb8b6; display: inline-flex; align-items: center; gap: 5px; }
 .badges button:hover { color: var(--accent); }
 .placement button { flex: 1; justify-content: center; white-space: nowrap; }
+.trigger { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+.trigger > span { margin-right: 2px; }
+.trigger select { height: 28px; padding: 0 6px; font-size: 11px; min-width: 0; }
+.trigger select.grow { flex: 1; }
+.unit-input { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.unit-input input { width: 52px; height: 28px; padding: 0 6px; font-size: 11px; }
+.trigger-params { width: 100%; display: flex; align-items: center; gap: 6px; }
+.trigger-params:empty { display: none; }

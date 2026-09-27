@@ -32,9 +32,10 @@ export function SpeechBubble({ speech, units, C, mapWidth, gutter }: { speech: S
   const maxChars = banner ? Math.max(36, Math.floor((Math.min(mapWidth - 16, 560) - PAD * 2) / CHAR)) : 36;
   const text = wrap(speech.text || '…', maxChars, 5);
   const options = speech.options.map(o => wrap(o || 'Untitled choice', maxChars - 4, 1)[0]);
-  const longest = Math.max((speech.speaker || 'Narrator').length + speech.turnLabel.length + 4, ...text.map(l => l.length), ...options.map(o => o.length + 4));
+  const longest = Math.max((speech.speaker || 'Narrator').length, speech.turnLabel.length * 0.9, ...text.map(l => l.length), ...options.map(o => o.length + 4));
   const w = banner ? Math.min(mapWidth - 16, 560) : Math.min(maxChars * CHAR + PAD * 2, Math.max(140, longest * CHAR + PAD * 2));
-  const h = PAD + 16 + text.length * LINE + (options.length ? 6 + options.length * OPTION : 0) + PAD - 4;
+  const HEAD = speech.turnLabel ? 30 : 16;
+  const h = PAD + HEAD + text.length * LINE + (options.length ? 6 + options.length * OPTION : 0) + PAD - 4;
 
   let ax: number, ay: number, below = false;
   if (unit && !banner) {
@@ -59,12 +60,12 @@ export function SpeechBubble({ speech, units, C, mapWidth, gutter }: { speech: S
       <rect x={x} y={y} width={w} height={h} rx="9" fill="#101415" stroke={color} strokeWidth="1.5" />
       {!banner && <path d={below ? `M${tx - 6} ${y + 1.5} L${tx + 6} ${y + 1.5}` : `M${tx - 6} ${y + h - 1.5} L${tx + 6} ${y + h - 1.5}`} stroke="#101415" strokeWidth="3" />}
       <text x={x + PAD} y={y + PAD + 7} fontSize="11" fontWeight="700" fill={color} dominantBaseline="central">{speech.speaker || 'Narrator'}</text>
-      <text x={x + w - PAD} y={y + PAD + 7} fontSize="9" fontWeight="700" fill="#7f8c85" textAnchor="end" dominantBaseline="central" letterSpacing="0.6">{speech.turnLabel}</text>
+      {speech.turnLabel && <text x={x + PAD} y={y + PAD + 21} fontSize="9" fontWeight="700" fill="#7f8c85" dominantBaseline="central" letterSpacing="0.6">{speech.turnLabel}</text>}
       {text.map((l, i) => (
-        <text key={i} x={x + PAD} y={y + PAD + 16 + i * LINE + LINE / 2} fontSize="12" fontStyle="italic" fill="#e3e7e5" dominantBaseline="central">{l}</text>
+        <text key={i} x={x + PAD} y={y + PAD + HEAD + i * LINE + LINE / 2} fontSize="12" fontStyle="italic" fill="#e3e7e5" dominantBaseline="central">{l}</text>
       ))}
       {options.map((o, i) => {
-        const oy = y + PAD + 16 + text.length * LINE + 6 + i * OPTION, picked = speech.picked === i;
+        const oy = y + PAD + HEAD + text.length * LINE + 6 + i * OPTION, picked = speech.picked === i;
         return (
           <g key={i}>
             <rect x={x + PAD - 4} y={oy} width={w - PAD * 2 + 8} height={OPTION - 4} rx="4" fill={picked ? '#303a29' : '#1b2122'} stroke={picked ? '#c6eb95' : '#2f3637'} />

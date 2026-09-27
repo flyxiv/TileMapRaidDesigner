@@ -1,7 +1,7 @@
 'use client';
 import { ArrowDown, ArrowUp, MessageSquare, PanelTop, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import { createLine, createOption, isUnit, phaseTurnRanges, unitCategories, unitTypes, type DialogueLine, type DialogueOption, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { createLine, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -22,7 +22,6 @@ export function speakerColor(phase: Phase, speaker: string) {
 
 export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange }: Props) {
   const phase = plan.phases[phaseIndex];
-  const start = phaseTurnRanges(plan)[phaseIndex].start;
   const lines = phase.dialogue;
   // Every unit on this phase's map can speak, grouped like the toolbox.
   const groups = (Object.keys(unitCategories) as UnitCategory[]).map(cat => ({
@@ -36,21 +35,18 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
     onChange(d => d.map(l => l.id === lineId ? { ...l, options: l.options.map(o => o.id === optId ? { ...o, ...patch } : o) } : l), key);
   const move = (i: number, by: number) => onChange(d => { const next = d.slice(); [next[i], next[i + by]] = [next[i + by], next[i]]; return next; });
   const add = () => {
-    const turn = lines.length ? Math.min(phase.turns, lines[lines.length - 1].turn) : 1;
-    const line = createLine(turn, defaultSpeaker);
+    // New lines reuse the previous line's trigger so a run of lines at the same moment is quick to write.
+    const line = createLine(lines.length ? { ...lines[lines.length - 1].trigger } : { type: 'time', seconds: 0 }, defaultSpeaker);
     onChange(d => [...d, line]);
     onActivate(line.id);
   };
 
   return (
     <div className="story">
-      <p className="hint">Dialogue spoken during this phase, in order. Turns count from the start of the fight, so this phase covers turns {start}–{start + phase.turns - 1}. The line you are editing appears on the map over its speaker. Add choices to let the raid pick a response; a choice can send the fight to another phase.</p>
+      <p className="hint">Dialogue spoken during this phase, in order. Each line is triggered by boss HP, encounter time, or time after a mechanic. The line you are editing appears on the map. Add choices to let the raid pick a response; a choice can send the fight to another phase.</p>
       {lines.map((l, i) => (
         <article key={l.id} className={`story-line${l.id === activeLineId ? ' active' : ''}`} onFocusCapture={() => onActivate(l.id)} onPointerDown={() => onActivate(l.id)} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
           <div className="story-line-top">
-            <select aria-label="Spoken on turn" title="Turn of the fight when this line is spoken" value={Math.min(l.turn, phase.turns)} onChange={e => patchLine(l.id, { turn: Number(e.target.value) })}>
-              {Array.from({ length: phase.turns }, (_, t) => <option key={t} value={t + 1}>Turn {start + t}</option>)}
-            </select>
             {(() => {
               const custom = customIds.has(l.id) || !known.has(l.speaker);
               return (
@@ -77,6 +73,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
             <input aria-label="Custom speaker name" className="story-custom" value={l.speaker} maxLength={60} placeholder="Speaker name (not on the map)"
               onChange={e => patchLine(l.id, { speaker: e.target.value }, `speaker-${l.id}`)} />
           )}
+          <TriggerFields phase={phase} trigger={l.trigger} onChange={(t, key) => patchLine(l.id, { trigger: t }, key && `${key}-${l.id}`)} />
           <div className="placement" role="group" aria-label="Show on map">
             <span>Show</span>
             <button type="button" aria-pressed={(l.placement ?? 'unit') === 'unit'} onClick={() => patchLine(l.id, { placement: 'unit' })}><MessageSquare size={12} /> On speaker</button>
@@ -110,6 +107,45 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
         </article>
       ))}
       <button type="button" className="button story-add" onClick={add}><Plus size={14} /> Add line</button>
+    </div>
+  );
+}
+
+const clampInt = (v: string, min: number, max: number) => Math.max(min, Math.min(max, Math.round(Number(v)) || 0));
+
+function TriggerFields({ phase, trigger: t, onChange }: { phase: Phase; trigger: DialogueTrigger; onChange: (t: DialogueTrigger, coalesceKey?: string) => void }) {
+  const enemies = phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === 'enemies');
+  const mechanics = phase.entities.filter(e => isMechanic(e.kind));
+  const setType = (type: DialogueTrigger['type']) => onChange(
+    type === 'hp' ? { type, percent: 50, target: hpTarget({}, phase)?.id }
+      : type === 'time' ? { type, seconds: 0 }
+      : { type, mechanic: mechanics[0]?.id ?? '', seconds: 0 });
+  return (
+    <div className="trigger">
+      <span>When</span>
+      <select aria-label="Trigger" className="grow" value={t.type} onChange={e => setType(e.target.value as DialogueTrigger['type'])}>
+        {(Object.keys(triggerTypes) as DialogueTrigger['type'][]).map(k => <option key={k} value={k}>{triggerTypes[k]}</option>)}
+      </select>
+      <div className="trigger-params">
+      {t.type === 'hp' && <>
+        <select aria-label="Enemy" className="grow" value={hpTarget(t, phase)?.id ?? ''} onChange={e => onChange({ ...t, target: e.target.value || undefined })}>
+          {enemies.length === 0 && <option value="">No enemies on the map</option>}
+          {enemies.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <label className="unit-input"><input aria-label="HP percent" type="number" min={0} max={100} value={t.percent} onChange={e => onChange({ ...t, percent: clampInt(e.target.value, 0, 100) }, 'hp')} />%</label>
+      </>}
+      {t.type === 'time' && <>
+        <label className="unit-input"><input aria-label="Minutes" type="number" min={0} max={99} value={Math.floor(t.seconds / 60)} onChange={e => onChange({ ...t, seconds: clampInt(e.target.value, 0, 99) * 60 + (t.seconds % 60) }, 'min')} />m</label>
+        <label className="unit-input"><input aria-label="Seconds" type="number" min={0} max={59} value={t.seconds % 60} onChange={e => onChange({ ...t, seconds: Math.floor(t.seconds / 60) * 60 + clampInt(e.target.value, 0, 59) }, 'sec')} />s</label>
+      </>}
+      {t.type === 'mechanic' && <>
+        <label className="unit-input"><input aria-label="Seconds after" type="number" min={0} max={5999} value={t.seconds} onChange={e => onChange({ ...t, seconds: clampInt(e.target.value, 0, 5999) }, 'after')} />s after</label>
+        <select aria-label="Mechanic" className="grow" value={mechanics.some(m => m.id === t.mechanic) ? t.mechanic : ''} onChange={e => onChange({ ...t, mechanic: e.target.value })}>
+          {!mechanics.some(m => m.id === t.mechanic) && <option value="">{mechanics.length ? 'Pick a mechanic' : 'No mechanics in this phase'}</option>}
+          {mechanics.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+      </>}
+      </div>
     </div>
   );
 }

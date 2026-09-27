@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  clampEntity, createMechanic, resizePlan, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  clampEntity, createMechanic, resizePlan, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -289,7 +289,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const activeLine = phase.dialogue.find(l => l.id === activeLineId) ?? phase.dialogue[0];
   const speech = panel === 'story' && activeLine ? {
     speaker: activeLine.speaker, text: activeLine.text, options: activeLine.options.map(o => o.text), placement: activeLine.placement,
-    turnLabel: `TURN ${ranges[pi].start + Math.min(activeLine.turn, phase.turns) - 1}`,
+    turnLabel: triggerLabel(activeLine.trigger, phase).toUpperCase(),
   } : null;
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
 
