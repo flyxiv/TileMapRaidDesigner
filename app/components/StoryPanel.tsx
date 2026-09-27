@@ -20,6 +20,7 @@ type Props = {
   /** Telegraphs in the timeline: edit, select on the map, and link to mechanic pages. */
   onMechanic: (id: string, patch: Partial<Entity>, coalesceKey?: string) => void;
   onSelectMechanic: (id: string) => void;
+  onDeleteMechanic: (id: string) => void;
   onCreatePage: (title: string) => string;
   onOpenPage: (id: string) => void;
   /** Copy a map into a mechanic page's Maps (`null` makes a new page for it). */
@@ -188,7 +189,7 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, start }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onDeleteMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, start }: Props) {
   const [mechanicMenu, setMechanicMenu] = useState(false);
   const placingPage = placingMechanic ? plan.pages.find(g => g.id === placingMechanic) : undefined;
   const phase = plan.phases[phaseIndex];
@@ -237,7 +238,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
         <Fragment key={item.id}>
           {zone(ci)}
           <MechanicItem m={item.mechanic} phase={phase} pages={plan.pages} cardRef={reorder.cardRef(ci)} cardClass={reorder.cardClass(ci)} handleProps={reorder.handleProps(ci)}
-            onChange={(patch, key) => onMechanic(item.id, patch, key)} onSelect={() => onSelectMechanic(item.id)}
+            onChange={(patch, key) => onMechanic(item.id, patch, key)} onSelect={() => onSelectMechanic(item.id)} onDelete={() => onDeleteMechanic(item.id)}
             onCreatePage={onCreatePage} onOpenPage={onOpenPage} />
         </Fragment>
       ) : (c => (
@@ -539,9 +540,9 @@ function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase;
 }
 
 /** A telegraph in the timeline: when it goes off, and the mechanic page that explains it. */
-function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onCreatePage, onOpenPage }: {
+function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onDelete, onCreatePage, onOpenPage }: {
   m: Entity; phase: Phase; pages: MechanicPage[]; cardRef: (el: HTMLElement | null) => void; cardClass: string; handleProps: React.HTMLAttributes<HTMLElement>;
-  onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void;
+  onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onDelete: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void;
 }) {
   const page = pages.find(g => g.id === m.page);
   const tone = mechanicTone(m);
@@ -552,6 +553,7 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
         <span className="mechanic-item-icon"><Glyph kind={m.kind} size={14} color="#141819" strokeWidth={2.2} /></span>
         <input aria-label="Mechanic name" className="conversation-title" value={m.name} maxLength={120} onChange={e => onChange({ name: e.target.value }, `name-${m.id}`)} />
         <button type="button" className="icon-button" aria-label={`Show ${m.name} on the map`} title="Select on the map" onClick={onSelect}><MapPin size={14} /></button>
+        <button type="button" className="icon-button danger" aria-label={`Delete ${m.name}`} title="Delete this telegraph" onClick={onDelete}><Trash2 size={14} /></button>
       </header>
       <div className="mechanic-item-kind">{mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</div>
       <TriggerFields phase={phase} trigger={m.trigger} exclude={m.id} onChange={(t, key) => onChange({ trigger: t }, key && `${key}-${m.id}`)} />

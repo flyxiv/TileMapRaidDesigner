@@ -1,8 +1,8 @@
 'use client';
-import { Copy, Download, Eraser, FileJson, Image as ImageIcon, BookOpen, Keyboard, ListOrdered, Map as MapIcon, Maximize2, MessageSquare, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
+import { Copy, Download, FileJson, Image as ImageIcon, BookOpen, Keyboard, ListOrdered, Maximize2, MessageSquare, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   MAX_UNIT_SIZE, aims, center, createPage, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneOf, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
@@ -22,8 +22,6 @@ type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize'; id?: 
 /** The map an edit goes to: the phase's starting map, or a conversation's own map (by conversation id). */
 type Target = 'base' | string;
 
-const BASE_CELL = 32;
-const zoomSteps = [0.5, 0.625, 0.75, 0.875, 1, 1.25, 1.5, 1.75, 2];
 
 const updatePhase = (plan: Plan, index: number, fn: (p: Phase) => Phase): Plan =>
   ({ ...plan, phases: plan.phases.map((p, i) => i === index ? fn(p) : p) });
@@ -57,17 +55,6 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [tool, setTool] = useState<Tool>({ type: 'select' });
   const [brush, setBrush] = useState(1);
   const [paintAll, setPaintAll] = useState(true);
-  const [zoom, setZoom] = useState(1);
-  const viewportRef = useRef<HTMLDivElement>(null);
-  /** Largest zoom step (up to 100%) at which the whole map fits the viewport. */
-  const fitZoom = useCallback(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const fit = Math.min((el.clientWidth - 48) / (hist.present.cols * BASE_CELL + 20), (el.clientHeight - 68) / (hist.present.rows * BASE_CELL + 20));
-    setZoom([...zoomSteps].reverse().find(z => z <= Math.min(1, fit)) ?? zoomSteps[0]);
-  }, [hist.present.cols, hist.present.rows]);
-  // Refit when the encounter opens and whenever the map is resized (or a resize is undone).
-  useLayoutEffect(fitZoom, [fitZoom]);
   const [layers, setLayers] = useState({ terrain: true, telegraphs: true, moves: true });
   const [hover, setHover] = useState<[number, number] | null>(null);
   const [presenting, setPresenting] = useState(false);
@@ -78,7 +65,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [resizing, setResizing] = useState(false);
   const [panel, setPanel] = useState<'details' | 'story'>('details');
   /** The map editor, or the encounter's mechanic pages. */
-  const [view, setView] = useState<'timeline' | 'map' | 'pages'>('timeline');
+  const [view, setView] = useState<'timeline' | 'pages'>('timeline');
   const [pageId, setPageId] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   /** A Story tab action waiting for a tile click (a move destination). */
@@ -388,7 +375,6 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   if (presenting) return <PresentView plan={plan} index={pi} onIndex={setPhaseIndex} onExit={() => setPresenting(false)} />;
 
-  const cell = Math.round(BASE_CELL * zoom);
   const toolLabel = tool.type === 'select' ? 'Select' : tool.type === 'erase' ? 'Erase'
     : tool.type === 'terrain' ? `Paint ${terrainTypes[tool.terrain].name}` : tool.type === 'unit' ? `Place ${unitTypes[tool.kind].name}` : `Draw ${mechanicTypes[tool.kind].name}`;
   const placing = dragItem ?? tool;
@@ -415,8 +401,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const mapPlan = staged ? { ...plan, phases: plan.phases.map((p, i) => i === pi ? scene : p) } : plan;
   /** Units standing somewhere other than their starting position because of earlier actions. */
   /** What a map shows: its editable map, or, while a step of its conversation is selected, the scene at that step. */
-  const displayFor = (t: Target): Phase => view === 'map' ? (t === 'base' ? scene : phaseFor(t))
-    : t !== 'base' && active && active.conversation.id === t ? sceneAtStep(phase, plan, t, active.step.id) : phaseFor(t);
+  const displayFor = (t: Target): Phase => t !== 'base' && active && active.conversation.id === t ? sceneAtStep(phase, plan, t, active.step.id) : phaseFor(t);
   const displacedIn = (t: Target, id: string) => {
     const a = displayFor(t).entities.find(e => e.id === id), b = phaseFor(t).entities.find(e => e.id === id);
     return !!a && !!b && (a.x !== b.x || a.y !== b.y || a.rotation !== b.rotation);
@@ -440,7 +425,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           {conv && <SaveToPageMenu plan={plan} onSave={pageId => saveDiagram(pageId, sceneToDiagram(display, plan, conv.title || 'Conversation map'))} />}
         </div>
         <div className={`timeline-map-canvas mode-${tool.type}`}>
-          <BattleMap className="battlemap" plan={shown} phaseIndex={pi} cell={cellSize} selectedId={isActive ? selectedId : null}
+          <BattleMap ref={t === 'base' ? mapRef : undefined} className="battlemap" plan={shown} phaseIndex={pi} cell={cellSize} selectedId={isActive ? selectedId : null}
             showMoves={t === 'base' && layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
             transform={isActive && tool.type === 'select' && !(selectedId && displacedIn(t, selectedId))}
             highlight={hoverTarget === t ? highlight : null} speech={here ? speech : null} stage={here ? stage : null}
@@ -459,7 +444,6 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         <nav className="crumb" aria-label="Breadcrumb"><Link href="/">Encounters</Link><i>/</i><b>{plan.name}</b></nav>
         <div className="view-switch" role="tablist" aria-label="View">
           <button type="button" role="tab" aria-selected={view === 'timeline'} onClick={() => setView('timeline')}><ListOrdered size={13} /> Timeline</button>
-          <button type="button" role="tab" aria-selected={view === 'map'} onClick={() => { setView('map'); setActiveTarget('base'); }}><MapIcon size={13} /> Map</button>
           <button type="button" role="tab" aria-selected={view === 'pages'} onClick={() => setView('pages')}><BookOpen size={13} /> Mechanics{plan.pages.length > 0 && <span className="tab-count">{plan.pages.length}</span>}</button>
         </div>
         <div className="header-actions">
@@ -570,14 +554,8 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               {picking ? <span><b>{picking.label ?? 'Click a tile to set where they move'}</b> · Esc to cancel</span> : <span>Drag from the palette onto a map · click to select, drag to move · Delete removes</span>}
               {hover && phase.terrain[hover[1]]?.[hover[0]] && <><i>·</i><span>Tile <b>{tileLabel(...hover)}</b> {terrainTypes[phase.terrain[hover[1]][hover[0]]].name}</span></>}
             </div>
-            {view === 'map' && <div className="toolbar-group">
-              <button type="button" className="icon-button" aria-label="Zoom out" disabled={zoom <= zoomSteps[0]} onClick={() => setZoom(z => zoomSteps[Math.max(0, zoomSteps.indexOf(z) - 1)])}><Minus size={15} /></button>
-              <button type="button" className="zoom-label" title="Fit map to screen" onClick={fitZoom}>{Math.round(zoom * 100)}%</button>
-              <button type="button" className="icon-button" aria-label="Zoom in" disabled={zoom >= zoomSteps[zoomSteps.length - 1]} onClick={() => setZoom(z => zoomSteps[Math.min(zoomSteps.length - 1, zoomSteps.indexOf(z) + 1)])}><Plus size={15} /></button>
-            </div>}
           </div>
 
-          {view === 'timeline' ? (
             <div className={`timeline-main${picking ? ' picking' : ''}`}>
               <StoryPanel wide
                 plan={plan} phaseIndex={pi} activeLineId={activeLine?.id ?? null} onActivate={setActiveLineId}
@@ -586,6 +564,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 onPhase={(fn, key) => commit(p => updatePhase(p, pi, fn), key)}
                 onMechanic={(id, patch, key) => patchEntity(id, patch, key)}
                 onSelectMechanic={setSelectedId}
+                onDeleteMechanic={id => { deleteEntity(id, 'base'); notify('Telegraph deleted. Ctrl+Z to undo.'); }}
                 onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
                 onOpenPage={id => { setPageId(id); setView('pages'); }}
                 placingMechanic={picking?.placing ?? null}
@@ -611,27 +590,10 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 )}
               />
             </div>
-          ) : (
-          <div ref={viewportRef} className={`map-viewport mode-${tool.type}${picking ? ' picking' : ''}`}>
-            <div className="map-scroll">
-              <BattleMap
-                ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={activeTarget === 'base' ? selectedId : null}
-                showMoves={layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
-                highlight={hoverTarget === 'base' ? highlight : null} transform={activeTarget === 'base' && tool.type === 'select'} onPointer={onPointer} onLeave={() => setHover(null)}
-                onDragTile={t => dragOver(t, 'base')} onDropTile={t => dropOn(t, 'base')}
-              />
-            </div>
-            <div className="map-legend">
-              <span><i className="party" />Characters</span><span><i className="enemy" />Enemies</span><span><i className="neutral" />Neutral</span>
-              <span><i className="tele" />Telegraph</span>
-              <span><i className="move" />Movement</span>
-            </div>
-          </div>
-          )}
 
           <div className="canvas-status">
             <span>{units.length} units · {phase.entities.length - units.length} telegraphs{prevPhase ? ` · ${moveCount} moved since phase ${pi}` : ''}</span>
-            <span>{view === 'timeline' ? 'Click a map to edit it with the palette · Drag from the toolbox onto any map' : 'Drag from the toolbox to place · Drag a token to move it · Arrow keys nudge'}</span>
+            <span>Click a map to edit it · Drag from the palette onto any map · Arrow keys nudge</span>
           </div>
         </main>
 
