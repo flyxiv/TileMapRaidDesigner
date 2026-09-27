@@ -428,3 +428,7 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .mechanic-menu button { align-items: flex-start; }
 .mechanic-menu button span { display: flex; flex-direction: column; gap: 2px; }
 .mechanic-menu small { font-size: 10px; color: var(--muted); }
+.menu-hint { padding: 8px 10px; max-width: 240px; }
+.page-shape { max-width: 520px; }
+.page-shape-row { display: flex; align-items: center; gap: 10px; }
+.page-shape-row select { flex: 1; height: 34px; padding: 0 10px; font-size: 12px; }

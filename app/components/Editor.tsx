@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, aims, center, createPage, timelineOf, actionText, faceRotation, isAction, stagePhase, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_UNIT_SIZE, aims, center, createPage, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -80,7 +80,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [pageId, setPageId] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   /** A Story tab action waiting for a tile click (a move destination). */
-  const [picking, setPicking] = useState<{ id?: string; apply: (tile: [number, number]) => void; label?: string; placing?: MechanicKind } | null>(null);
+  const [picking, setPicking] = useState<{ id?: string; apply: (tile: [number, number]) => void; label?: string; placing?: string } | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const lastEdit = useRef<{ key: string; at: number } | null>(null);
   const presentRef = useRef(hist.present);
@@ -237,14 +237,15 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   };
 
   /** Adds a unit or telegraph at a tile, or paints one brush of terrain, as one undo step. */
-  const spawn = (item: Tool, tile: [number, number]) => {
+  /** `extra` overrides the new telegraph's defaults, e.g. the name and page it gets when placed from a mechanic page. */
+  const spawn = (item: Tool, tile: [number, number], extra?: Partial<Entity>) => {
     if (item.type === 'terrain') { commit(pl => paint(pl, pi, paintAll, brushTiles(...tile), item.terrain)); return; }
     let e: Entity;
     if (item.type === 'unit') {
       const { code, name } = nextCode(phase, item.kind);
       e = clampEntity({ id: uid(item.kind), kind: item.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0 }, plan);
     } else if (item.type === 'mechanic') {
-      e = createMechanic(item.kind, tile[0], tile[1]);
+      e = { ...createMechanic(item.kind, tile[0], tile[1]), ...extra };
       // Dropped on a unit: the telegraph starts from that unit, and cones and lines aim where it faces.
       const on = entityAt(phase, ...tile);
       if (on && isUnit(on.kind) && item.kind !== 'armageddon') {
@@ -566,10 +567,14 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
                 onOpenPage={id => { setPageId(id); setView('pages'); }}
                 placingMechanic={picking?.placing ?? null}
-                onNewMechanic={kind => kind === 'armageddon'
-                  // Arena-wide: nothing to place, so it goes straight onto the timeline.
-                  ? spawn({ type: 'mechanic', kind }, [0, 0])
-                  : setPicking({ placing: kind, label: `Click a tile to place ${mechanicTypes[kind].name} (on a unit to attach it)`, apply: tile => spawn({ type: 'mechanic', kind }, tile) })}
+                onNewMechanic={id => {
+                  // A telegraph placed from a page takes the page's shape and name, and links back to it.
+                  const page = plan.pages.find(g => g.id === id);
+                  if (!page) return;
+                  const kind = pageKind(plan, page), extra = { name: page.title || mechanicTypes[kind].name, page: page.id };
+                  if (kind === 'armageddon') spawn({ type: 'mechanic', kind }, [0, 0], extra); // arena-wide: nothing to place
+                  else setPicking({ placing: page.id, label: `Click a tile to place ${extra.name} (on a unit to attach it)`, apply: tile => spawn({ type: 'mechanic', kind }, tile, extra) });
+                }}
                 pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}
               />
             </div>

@@ -95,7 +95,8 @@ export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: '
 /** `timeline` orders the phase's conversations and telegraphs (by id); anything missing from it follows at the end. */
 export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[] };
 /** A write-up of one mechanic, shared by every telegraph that links to it (in any phase). */
-export type MechanicPage = { id: string; title: string; description: string };
+/** `kind` is the telegraph shape placed when the page is added to the timeline. */
+export type MechanicPage = { id: string; title: string; description: string; kind?: MechanicKind };
 export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[]; pages: MechanicPage[] };
 
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
@@ -133,7 +134,13 @@ export const scriptOf = (phase: Phase) => timelineOf(phase).flatMap(item => item
 export type PresentStep = { conversation: Conversation; step: ConversationStep; mechanic?: undefined } | { mechanic: Entity; conversation?: undefined; step?: undefined };
 export const presentSteps = (phase: Phase): PresentStep[] => timelineOf(phase).flatMap((item): PresentStep[] =>
   item.kind === 'conversation' ? item.conversation.lines.map(step => ({ conversation: item.conversation, step })) : [{ mechanic: item.mechanic }]);
-export const createPage = (title: string): MechanicPage => ({ id: uid('page'), title, description: '' });
+export const createPage = (title: string, kind: MechanicKind = 'circle'): MechanicPage => ({ id: uid('page'), title, description: '', kind });
+/** A page's telegraph shape: its own, else the shape of a telegraph already linked to it, else a circle. */
+export function pageKind(plan: Plan, page: MechanicPage): MechanicKind {
+  if (page.kind) return page.kind;
+  for (const phase of plan.phases) for (const e of phase.entities) if (e.page === page.id && isMechanic(e.kind)) return e.kind;
+  return 'circle';
+}
 
 const compassNames = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
 export const compassName = (deg: number) => deg % 45 === 0 ? compassNames[deg / 45] : `${deg}°`;
@@ -302,7 +309,7 @@ export function createPlan(): Plan {
     ({ id, kind, name, code: '', x, y, radius, rotation, ...(anchor ? { anchor } : {}) });
   const scorched = baseTerrain(cols, rows).map((row, y) => row.map((t, x): Terrain => x >= 8 && x <= 11 && y >= 8 && y <= 9 ? 'lava' : t));
   return { version: 2, name: 'The Obsidian Sanctum', cols, rows, pages: [
-    { id: 'page-cleave', title: 'Frontal cleave', description: 'The Sentinel swings at whoever is in front of it.\n\nThe main tank holds it facing away from the raid. Everyone else stays out of the cone.' },
+    { id: 'page-cleave', title: 'Frontal cleave', kind: 'cone', description: 'The Sentinel swings at whoever is in front of it.\n\nThe main tank holds it facing away from the raid. Everyone else stays out of the cone.' },
   ], phases: [
     { id: 'opening', name: 'The opening move', terrain: baseTerrain(cols, rows),
       notes: 'Tank holds the Sentinel facing north.\n\nSpread DPS on the flanks. Keep healers at the back, outside the impact zone.\n\nSave movement skills for the first cleave.',
@@ -390,7 +397,7 @@ export function validatePlan(value: unknown): value is Plan {
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&
     Array.isArray(p.pages) && p.pages.length <= 200 && new Set(p.pages.map(g => g?.id)).size === p.pages.length &&
-    p.pages.every(g => g && typeof g.id === 'string' && typeof g.title === 'string' && g.title.length <= 120 && typeof g.description === 'string' && g.description.length <= 20000) &&
+    p.pages.every(g => g && typeof g.id === 'string' && typeof g.title === 'string' && g.title.length <= 120 && typeof g.description === 'string' && g.description.length <= 20000 && (g.kind === undefined || Object.hasOwn(mechanicTypes, g.kind))) &&
     Array.isArray(p.phases) && p.phases.length > 0 && p.phases.length <= 30 && new Set(p.phases.map(f => f?.id)).size === p.phases.length &&
     p.phases.every(f => f && typeof f.id === 'string' && typeof f.name === 'string' && f.name.length <= 120 && typeof f.notes === 'string' && f.notes.length <= 10000 &&
       (f.timeline === undefined || (Array.isArray(f.timeline) && f.timeline.length <= 1000 && f.timeline.every(id => typeof id === 'string'))) &&

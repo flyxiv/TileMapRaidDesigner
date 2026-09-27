@@ -1,6 +1,6 @@
 'use client';
 import { BookOpen, MapPin, Plus, Trash2 } from 'lucide-react';
-import { isMechanic, mechanicTone, mechanicTypes, triggerLabel, type MechanicKind, type MechanicPage, type Plan } from '../plan';
+import { isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type MechanicKind, type MechanicPage, type Plan } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -46,6 +46,16 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onDe
         <article className="page-editor">
           <div className="eyebrow"><BookOpen size={11} /> Mechanic page</div>
           <input aria-label="Page title" className="page-title" value={page.title} maxLength={120} placeholder="Mechanic name" onChange={e => onChange(page.id, { title: e.target.value }, `page-title-${page.id}`)} />
+          <label className="field page-shape">
+            <span>Shape on the map</span>
+            <div className="page-shape-row">
+              <span className="page-use-icon" style={{ background: mechanicTone({ kind: pageKind(plan, page) }) }}><Glyph kind={pageKind(plan, page)} size={13} color="#141819" strokeWidth={2.2} /></span>
+              <select value={pageKind(plan, page)} onChange={e => onChange(page.id, { kind: e.target.value as MechanicKind })}>
+                {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => <option key={k} value={k}>{mechanicTypes[k].name} · {mechanicTypes[k].description}</option>)}
+              </select>
+            </div>
+            <small className="hint">Used when you place this mechanic from the Timeline's New mechanic menu.</small>
+          </label>
           <label className="field page-description">
             <span>Description</span>
             <textarea value={page.description} maxLength={20000} placeholder="What the mechanic does, how to spot it, and how the raid should handle it."

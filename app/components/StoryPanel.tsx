@@ -2,7 +2,7 @@
 import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
 import { Glyph } from './glyphs';
-import { mechanicTone, mechanicTypes, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -20,10 +20,10 @@ type Props = {
   onSelectMechanic: (id: string) => void;
   onCreatePage: (title: string) => string;
   onOpenPage: (id: string) => void;
-  /** Start placing a new telegraph of this kind: the next map click puts it there. */
-  onNewMechanic: (kind: MechanicKind) => void;
-  /** Set while a new telegraph is waiting to be placed. */
-  placingMechanic: MechanicKind | null;
+  /** Start placing a telegraph for a mechanic page: the next map click puts it there. */
+  onNewMechanic: (pageId: string) => void;
+  /** The page whose telegraph is waiting to be placed. */
+  placingMechanic: string | null;
   /** Asks the editor for the next tile clicked on the map; `null` while no pick is pending. */
   onPickTile: (apply: ((tile: [number, number]) => void) | null) => void;
   pickingFor: string | null;
@@ -182,6 +182,7 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
 
 export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onPickTile, pickingFor }: Props) {
   const [mechanicMenu, setMechanicMenu] = useState(false);
+  const placingPage = placingMechanic ? plan.pages.find(g => g.id === placingMechanic) : undefined;
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
   const items = timelineOf(phase);
@@ -289,15 +290,24 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
         <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
         <div className="menu-wrap">
           <button type="button" className={`button story-add${placingMechanic ? ' placing' : ''}`} aria-haspopup="menu" aria-expanded={mechanicMenu} onClick={() => setMechanicMenu(o => !o)}>
-            <Plus size={14} /> {placingMechanic ? `Click the map to place ${mechanicTypes[placingMechanic].name}` : 'New mechanic'}
+            <Plus size={14} /> {placingPage ? `Click the map to place ${placingPage.title || 'it'}` : 'New mechanic'}
           </button>
           {mechanicMenu && (
             <div className="menu mechanic-menu" role="menu">
-              {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => (
-                <button key={k} type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onNewMechanic(k); }}>
-                  <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} /> <span><b>{mechanicTypes[k].name}</b><small>{mechanicTypes[k].description}</small></span>
-                </button>
-              ))}
+              {plan.pages.length === 0 && <p className="hint menu-hint">No mechanic pages yet. Create one to describe the mechanic, then place it from here.</p>}
+              {plan.pages.map(g => {
+                const kind = pageKind(plan, g);
+                return (
+                  <button key={g.id} type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onNewMechanic(g.id); }}>
+                    <Glyph kind={kind} size={14} color={mechanicTone({ kind })} />
+                    <span><b>{g.title || 'Untitled page'}</b><small>{mechanicTypes[kind].name}{g.description ? ` · ${g.description.split('\n')[0].slice(0, 60)}` : ''}</small></span>
+                  </button>
+                );
+              })}
+              <hr />
+              <button type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onOpenPage(onCreatePage('New mechanic')); }}>
+                <BookOpen size={14} /> <span><b>New mechanic page</b><small>Describe a mechanic, then place it on the timeline</small></span>
+              </button>
             </div>
           )}
         </div>
