@@ -2,7 +2,7 @@
 import { ArrowDown, ArrowUp, GripVertical, Map as MapIcon, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import {
-  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, bossOf, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
   nextCode, setWaymark, terrainTypes, uid, unitTypes, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, type Diagram, type Entity, type MechanicKind, type Terrain, type UnitKind,
 } from '../plan';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
@@ -99,6 +99,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
       e = createMechanic(item.kind, tile[0], tile[1]);
       const on = entityAt(phase, ...tile);
       if (on && isUnit(on.kind) && item.kind !== 'armageddon') e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
+      else if (item.kind === 'slash') { const boss = bossOf(d.entities); if (boss) e = { ...e, anchor: boss.id, followFacing: true }; }
     } else return;
     setEntities(es => [...es, e], `${key}-add`);
     setSelectedId(e.id);

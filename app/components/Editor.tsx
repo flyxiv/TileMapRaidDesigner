@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  unitFacing, MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  bossOf, unitFacing, MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -291,6 +291,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       if (on && isUnit(on.kind) && item.kind !== 'armageddon') {
         e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
         notify(`${e.name} starts from ${on.name}`);
+      } else if (item.kind === 'slash') {
+        const boss = bossOf(tphase.entities);
+        if (boss) { e = { ...e, anchor: boss.id, followFacing: true }; notify(`${e.name} starts from ${boss.name}`); }
       }
     } else return;
     if (isMechanic(e.kind)) {
@@ -708,7 +711,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                   const kind = pageKind(plan, page), extra = { name: page.title || mechanicTypes[kind].name, page: page.id };
                   // It goes straight onto the timeline: cones and lines start from the boss (facing where it faces), anything
                   // else sits mid-arena, ready to be dragged into place on the map.
-                  const boss = phase.entities.find(e => e.kind === 'boss') ?? phase.entities.find(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === 'enemies');
+                  const boss = bossOf(phase.entities);
                   const freeNearCenter = (): [number, number] => {
                     const cx = Math.floor(plan.cols / 2), cy = Math.floor(plan.rows / 2);
                     for (let r = 0; r < Math.max(plan.cols, plan.rows); r++)

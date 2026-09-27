@@ -172,6 +172,14 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
             {Object.entries(mechanicTypes).map(([k, t]) => <option key={k} value={k}>{t.name}</option>)}
           </select>
         </label>
+        {m.kind === 'slash' && (
+          <label className="field">Side
+            <select value={m.side ?? 'left'} onChange={ev => onChange({ side: ev.target.value as 'left' | 'right' })}>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+            </select>
+          </label>
+        )}
       </div>
       {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
     </Group>
@@ -214,7 +222,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
         {show.radius && <>
           {!m.infinite && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={MAX_RADIUS} step={0.5} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
           <label className="check"><input type="checkbox" checked={!!m.infinite} onChange={ev => onChange({ infinite: ev.target.checked || undefined })} />
-            Infinite {m.kind === 'line' ? 'length' : 'radius'} <span className="hint">{m.kind === 'cone' || m.kind === 'line' ? '(runs to the edge of the map)' : '(covers the whole arena)'}</span></label>
+            Infinite {m.kind === 'line' ? 'length' : 'radius'} <span className="hint">{aims(m.kind) ? '(runs to the edge of the map)' : '(covers the whole arena)'}</span></label>
         </>}
         {show.width && <Slider label="Width" value={m.width ?? 1} unit={(m.width ?? 1) === 1 ? 'tile' : 'tiles'} min={1} max={8} step={1} onChange={v => onChange({ width: v }, `width-${m.id}`)} />}
         {show.angle && <Slider label="Spread" value={m.angle ?? 90} unit="°" min={15} max={360} step={15} onChange={v => onChange({ angle: v }, `angle-${m.id}`)} />}

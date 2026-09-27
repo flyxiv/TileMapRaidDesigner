@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { resolveFacing, waymarkId, waymarkTypes, type WaymarkKey, aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { wedgeOf, resolveFacing, waymarkId, waymarkTypes, type WaymarkKey, aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { MarkerShape, glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -232,12 +232,14 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
     case 'tower': shape = <>{ring(R, false)}{ring(Math.max(3, R - C * 0.18), false, 0.6)}</>; break;
     case 'knockback': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={C * 0.45} to={C * 0.45 + (m.push ?? 2) * C} count={8} tone={tone} head={head} /></>; break;
     case 'donut': shape = <>{ring(R)}<circle cx={cx} cy={cy} r={(m.inner ?? 1) * C} fill="none" stroke={tones.safe} strokeWidth={width} /></>; break;
-    case 'cone': {
-      const R2 = (reach(m) + 0.3) * C, spread = Math.min(360, m.angle ?? 90), h = (spread * Math.PI) / 360;
+    case 'cone':
+    case 'slash': {
+      const { facing, spread } = wedgeOf(m, entities), w = (facing * Math.PI) / 180;
+      const R2 = (reach(m) + 0.3) * C, h = (spread * Math.PI) / 360;
       const p = (t: number) => `${cx + R2 * Math.sin(t)} ${cy - R2 * Math.cos(t)}`;
       shape = spread >= 360
         ? <circle cx={cx} cy={cy} r={R2} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />
-        : <path d={`M${cx} ${cy} L${p(a - h)} A${R2} ${R2} 0 ${spread > 180 ? 1 : 0} 1 ${p(a + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
+        : <path d={`M${cx} ${cy} L${p(w - h)} A${R2} ${R2} 0 ${spread > 180 ? 1 : 0} 1 ${p(w + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
       break;
     }
     case 'line': {
@@ -269,6 +271,7 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   const labelAt = Math.min(reach(m), 4) * (m.kind === 'cone' ? 0.88 : 0.55);
   if (m.kind === 'line') { const [s] = lineSegments(m, entities); if (s) [x, y] = [ox + s.dir[0] * Math.min(s.length * 0.5, labelAt), oy + s.dir[1] * Math.min(s.length * 0.5, labelAt)]; }
   else if (m.kind === 'cone') [x, y] = [ox + Math.sin(a) * labelAt, oy - Math.cos(a) * labelAt];
+  else if (m.kind === 'slash') { const w = (wedgeOf(m, entities).facing * Math.PI) / 180, d = Math.min(reach(m), 3.5); [x, y] = [ox + Math.sin(w) * d, oy - Math.cos(w) * d]; }
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
   else if (m.kind === 'marker') y = oy + 1.25;
   else if (m.infinite) y = oy + 1.2;

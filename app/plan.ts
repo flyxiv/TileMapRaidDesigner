@@ -26,6 +26,7 @@ export const unitsIn = (category: UnitCategory) => (Object.keys(unitTypes) as Un
 export const mechanicTypes = {
   circle: { name: 'Circle', description: 'Area damage around a point' },
   cone: { name: 'Cone', description: 'Frontal area damage' },
+  slash: { name: 'Side slash', description: "Half the arena to the boss's left or right" },
   line: { name: 'Line', description: 'Charge or beam in a straight line' },
   donut: { name: 'Donut', description: 'Safe inside, damage in the ring' },
   flare: { name: 'Flare', description: 'Proximity damage that falls off with distance' },
@@ -39,7 +40,7 @@ export const mechanicTypes = {
 export const tones = { telegraph: '#dbb36d', safe: '#c6eb95', soak: '#86c5f2' };
 /** Which settings a mechanic kind uses. */
 export const mechanicFields = (kind: Kind) => ({
-  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line', angle: kind === 'cone', inner: kind === 'donut',
+  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line' || kind === 'slash', angle: kind === 'cone', inner: kind === 'donut',
   width: kind === 'line', push: kind === 'knockback', soak: kind === 'tower', origin: kind !== 'armageddon',
 });
 
@@ -70,6 +71,8 @@ export type Entity = {
   followFacing?: boolean;
   /** Units only, optional: another unit (by id) this one keeps facing, wherever either stands. Overrides `rotation`. */
   faceToward?: string;
+  /** Side slashes only: which side of its source it hits (left when unset). */
+  side?: 'left' | 'right';
   /** Telegraphs only: when it goes off, and the mechanic page that explains it. */
   trigger?: DialogueTrigger;
   page?: string;
@@ -357,15 +360,28 @@ export function unitFacing(u: Entity, entities: Entity[]) {
 /** Entities with each unit's rotation set to where it actually faces (see `unitFacing`), for drawing. */
 export const resolveFacing = (entities: Entity[]): Entity[] =>
   entities.some(e => e.faceToward) ? entities.map(e => e.faceToward ? { ...e, rotation: unitFacing(e, entities) } : e) : entities;
-export const aims = (kind: Kind) => kind === 'cone' || kind === 'line';
+/** The unit boss-based mechanics come from: the boss, else the first enemy. */
+export const bossOf = (entities: Entity[]) => entities.find(e => e.kind === 'boss') ?? entities.find(e => isUnit(e.kind) && unitTypes[e.kind].category === 'enemies');
+export const aims = (kind: Kind) => kind === 'cone' || kind === 'line' || kind === 'slash';
+/**
+ * The wedge a cone or side slash covers: the direction it opens toward (compass degrees) and its spread. A side slash is
+ * the half of the arena on its source's left or right, so it opens 90° off the facing with a 180° spread.
+ */
+export function wedgeOf(m: Entity, entities: Entity[]): { facing: number; spread: number } {
+  const facing = mechanicFacing(m, entities);
+  if (m.kind === 'slash') return { facing: (facing + (m.side === 'right' ? 90 : 270)) % 360, spread: 180 };
+  return { facing, spread: Math.min(360, m.angle ?? 90) };
+}
 
 /** Walkable tiles a mechanic covers. Walls and void never take damage. */
 /** Walkable tiles a mechanic covers, each with a strength from 0 to 1 (below 1 only for flare falloff). Walls and void never take damage. */
 export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, number, number][] {
   const { point: [cx, cy], anchor } = mechanicOrigin(m, phase.entities);
-  const a = (mechanicFacing(m, phase.entities) * Math.PI) / 180, dir = [Math.sin(a), -Math.cos(a)];
-  // A tile is in a cone when its center is within half the spread of the facing (plus a degree of slack for edges).
-  const halfAngle = Math.cos((Math.min(180, (m.angle ?? 90) / 2 + 1) * Math.PI) / 180);
+  const wedge = wedgeOf(m, phase.entities);
+  const a = (wedge.facing * Math.PI) / 180, dir = [Math.sin(a), -Math.cos(a)];
+  // A tile is in a cone when its center is within half the spread of the facing (plus a degree of slack for edges). A
+  // side slash stops exactly at the line through its source, so the column or row the boss stands on stays safe.
+  const halfAngle = m.kind === 'slash' ? 0.02 : Math.cos((Math.min(180, wedge.spread / 2 + 1) * Math.PI) / 180);
   const inAnchor = (x: number, y: number) => !!anchor && x >= anchor.x && x < anchor.x + footprint(anchor) && y >= anchor.y && y < anchor.y + footprint(anchor);
   const r = reach(m);
   const segments = m.kind === 'line' ? lineSegments(m, phase.entities) : [];
@@ -377,6 +393,7 @@ export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, numbe
     let strength = 1;
     switch (m.kind) {
       case 'cone':
+      case 'slash':
         if (inAnchor(x, y) || d < 0.3 || d > r + 0.2 || (dx * dir[0] + dy * dir[1]) / d < halfAngle) continue;
         break;
       case 'line': {
@@ -428,6 +445,7 @@ export function createMechanic(kind: MechanicKind, x: number, y: number): Entity
   const defaults = {
     circle: { name: 'Impact', radius: 2, rotation: 0 },
     cone: { name: 'Cleave', radius: 3, rotation: 180 },
+    slash: { name: 'Side slash', radius: 8, rotation: 180, infinite: true, side: 'left' as const },
     line: { name: 'Charge', radius: 6, rotation: 180, width: 1 },
     donut: { name: 'Donut', radius: 4, rotation: 0, inner: 1.5 },
     flare: { name: 'Flare', radius: 5, rotation: 0 },
@@ -571,7 +589,7 @@ export function validatePlan(value: unknown): value is Plan {
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
       num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.image === undefined || (typeof e.image === 'string' && e.image.length <= 80)) && (e.marker === undefined || Object.hasOwn(markerTypes, e.marker)) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
-      (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.faceToward === undefined || typeof e.faceToward === 'string') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
+      (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.faceToward === undefined || typeof e.faceToward === 'string') && (e.side === undefined || e.side === 'left' || e.side === 'right') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const validWaymarks = (w: Waymarks | undefined, cols: number, rows: number) => w === undefined || (!!w && typeof w === 'object' && !Array.isArray(w) &&
     Object.entries(w).every(([k, v]) => Object.hasOwn(waymarkTypes, k) && Array.isArray(v) && v.length === 2 && int(v[0], 0, cols - 1) && int(v[1], 0, rows - 1)));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
