@@ -286,7 +286,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const activeLine = phase.dialogue.find(l => l.id === activeLineId) ?? phase.dialogue[0];
   const speech = panel === 'story' && activeLine ? {
     speaker: activeLine.speaker, text: activeLine.text, options: activeLine.options.map(o => o.text),
-    turnLabel: `T${ranges[pi].start + Math.min(activeLine.turn, phase.turns) - 1}`,
+    turnLabel: `TURN ${ranges[pi].start + Math.min(activeLine.turn, phase.turns) - 1}`,
   } : null;
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
 

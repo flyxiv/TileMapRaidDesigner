@@ -50,7 +50,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   const current = phase.dialogue[line];
   const speech = current ? {
     speaker: current.speaker, text: current.text, options: current.options.map(o => o.text),
-    turnLabel: `T${ranges[index].start + Math.min(current.turn, phase.turns) - 1}`,
+    turnLabel: `TURN ${ranges[index].start + Math.min(current.turn, phase.turns) - 1}`,
     picked: current.options.findIndex(o => o.id === chosen[current.id]),
   } : null;
 
@@ -77,7 +77,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                 const target = pick?.goto ? plan.phases.findIndex(p => p.id === pick.goto) : -1;
                 return (
                   <div key={l.id} className={`script-line${li === line ? ' active' : ''}`} onClick={() => setCursor({ phase: index, line: li })} style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
-                    <div className="script-meta"><span className="script-turn">T{ranges[index].start + Math.min(l.turn, phase.turns) - 1}</span><b>{l.speaker || 'Narrator'}</b></div>
+                    <div className="script-meta"><span className="script-turn">TURN {ranges[index].start + Math.min(l.turn, phase.turns) - 1}</span><b>{l.speaker || 'Narrator'}</b></div>
                     {l.text && <p>{l.text}</p>}
                     {l.options.length > 0 && (
                       <div className="script-options">
