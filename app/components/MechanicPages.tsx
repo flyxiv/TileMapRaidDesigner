@@ -1,10 +1,11 @@
 'use client';
-import { BookOpen, Map as MapIcon, MapPin, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, GripVertical, Map as MapIcon, MapPin, Plus, Trash2, Type } from 'lucide-react';
 import { useState } from 'react';
 import { DiagramEditor } from './DiagramEditor';
 import { Inspector } from './Inspector';
+import { moveTo, useReorder } from './StoryPanel';
 import { MapPreviews } from './MapPreview';
-import { clampEntity, diagramPlan, blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
+import { mapBlock, pageMaps, textBlock, clampEntity, diagramPlan, blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -32,6 +33,8 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
   const [addMenu, setAddMenu] = useState(false);
   /** The unit or telegraph selected on one of the page's maps, shown in the Details column. */
   const [sel, setSel] = useState<{ diagramId: string; entityId: string } | null>(null);
+  const blocksOf = plan.pages.find(p => p.id === pageId) ?? plan.pages[0];
+  const blocks = useReorder(blocksOf?.blocks.length ?? 0, (from, to) => blocksOf && onUpdate(blocksOf.id, g => ({ ...g, blocks: moveTo(g.blocks, from, to) })));
   const page = plan.pages.find(p => p.id === pageId) ?? plan.pages[0];
   const uses = page ? pageUses(plan, page.id) : [];
   return (
@@ -45,8 +48,8 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
             return (
               <button key={p.id} type="button" className={`pages-item${p.id === page?.id ? ' active' : ''}`} aria-current={p.id === page?.id ? 'page' : undefined} onClick={() => onSelect(p.id)}>
                 <b>{p.title || 'Untitled page'}</b>
-                <small>{count ? `Used ${count} time${count > 1 ? 's' : ''}` : 'Not linked yet'}{(p.diagrams ?? []).length ? ` · ${(p.diagrams ?? []).length} map${(p.diagrams ?? []).length > 1 ? 's' : ''}` : ''}</small>
-                <MapPreviews diagrams={p.diagrams} width={110} max={1} />
+                <small>{count ? `Used ${count} time${count > 1 ? 's' : ''}` : 'Not linked yet'}{pageMaps(p).length ? ` · ${pageMaps(p).length} map${pageMaps(p).length > 1 ? 's' : ''}` : ''}</small>
+                <MapPreviews diagrams={pageMaps(p)} width={110} max={1} />
               </button>
             );
           })}
@@ -66,34 +69,53 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
             </div>
             <small className="hint">Used when you place this mechanic from the Timeline's New mechanic menu.</small>
           </label>
-          <label className="field page-description">
-            <span>Description</span>
-            <textarea value={page.description} maxLength={20000} placeholder="What the mechanic does, how to spot it, and how the raid should handle it."
-              onChange={e => onChange(page.id, { description: e.target.value }, `page-desc-${page.id}`)} />
-          </label>
-          <section className="page-maps">
-            <div className="section-title">Maps <span className="plain">Illustrate the mechanic step by step</span></div>
-            {(page.diagrams ?? []).length === 0 && <p className="hint">No maps yet. Add a blank map, copy a phase, or save a conversation's map from the Timeline.</p>}
-            {(page.diagrams ?? []).map((d, i, all) => (
-              <DiagramEditor key={d.id} diagram={d} index={i} count={all.length}
-                selectedId={sel?.diagramId === d.id ? sel.entityId : null} onSelect={id => setSel(id ? { diagramId: d.id, entityId: id } : null)}
-                onChange={(fn, key) => onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).map(x => x.id === d.id ? fn(x) : x) }), key)}
-                onMove={by => onUpdate(page.id, g => { const ds = (g.diagrams ?? []).slice(); [ds[i], ds[i + by]] = [ds[i + by], ds[i]]; return { ...g, diagrams: ds }; })}
-                onDelete={() => onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).filter(x => x.id !== d.id) }))} />
-            ))}
-            <div className="menu-wrap">
-              <button type="button" className="button" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Plus size={14} /> Add map</button>
-              {addMenu && (
-                <div className="menu mechanic-menu" role="menu">
-                  {[{ label: 'Blank map', sub: `${plan.cols} × ${plan.rows} floor`, make: () => blankDiagram(plan.cols, plan.rows, `Map ${(page.diagrams ?? []).length + 1}`) },
-                    ...plan.phases.map((f, fi) => ({ label: `Copy phase ${fi + 1}: ${f.name}`, sub: 'Terrain and units as placed in that phase', make: (): Diagram => sceneToDiagram(f, plan, f.name) }))]
-                    .map(o => (
-                      <button key={o.label} type="button" role="menuitem" onClick={() => { setAddMenu(false); const d = o.make(); onUpdate(page.id, g => ({ ...g, diagrams: [...(g.diagrams ?? []), d] })); }}>
-                        <MapIcon size={14} /> <span><b>{o.label}</b><small>{o.sub}</small></span>
-                      </button>
-                    ))}
-                </div>
-              )}
+          <section className="page-blocks" aria-label="Page">
+            <div className="section-title">Page <span className="plain">Text and maps, top to bottom</span></div>
+            {page.blocks.map((b, i, all) => {
+              const move = (by: number) => onUpdate(page.id, g => ({ ...g, blocks: moveTo(g.blocks, i, i + by) }));
+              const remove = () => onUpdate(page.id, g => ({ ...g, blocks: g.blocks.filter(x => x.id !== b.id) }));
+              if (b.type === 'map') return (
+                <DiagramEditor key={b.id} diagram={b} index={i} count={all.length}
+                  cardRef={blocks.cardRef(i)} cardClass={blocks.cardClass(i)} handleProps={blocks.handleProps(i)}
+                  selectedId={sel?.diagramId === b.id ? sel.entityId : null} onSelect={id => setSel(id ? { diagramId: b.id, entityId: id } : null)}
+                  onChange={(fn, key) => onUpdate(page.id, g => ({ ...g, blocks: g.blocks.map(x => x.id === b.id && x.type === 'map' ? { ...fn(x), type: 'map' as const } : x) }), key)}
+                  onMove={move} onDelete={remove} />
+              );
+              return (
+                <section key={b.id} ref={blocks.cardRef(i)} className={`page-block text-block${blocks.cardClass(i)}`} aria-label={`Text ${i + 1}`}>
+                  <header className="diagram-head">
+                    <button type="button" className="drag-handle" aria-label={`Reorder text block ${i + 1}`} title="Drag to reorder (or focus and use the arrow keys)" {...blocks.handleProps(i)}><GripVertical size={15} /></button>
+                    <span className="line-number" title="Text"><Type size={11} /></span>
+                    <span className="block-label">Text</span>
+                    <div className="story-tools">
+                      <button type="button" className="icon-button" aria-label="Move block up" disabled={i === 0} onClick={() => move(-1)}><ArrowUp size={13} /></button>
+                      <button type="button" className="icon-button" aria-label="Move block down" disabled={i === all.length - 1} onClick={() => move(1)}><ArrowDown size={13} /></button>
+                      <button type="button" className="icon-button danger" aria-label="Delete text block" onClick={() => { if (!b.text.trim() || confirm('Delete this text?')) remove(); }}><Trash2 size={13} /></button>
+                    </div>
+                  </header>
+                  <textarea aria-label={`Text ${i + 1}`} value={b.text} maxLength={20000} rows={Math.min(16, Math.max(3, b.text.split('\n').length + 1))}
+                    placeholder="What happens, how to spot it, and how the raid should handle it."
+                    onChange={e => onUpdate(page.id, g => ({ ...g, blocks: g.blocks.map(x => x.id === b.id ? { ...x, text: e.target.value } : x) }), `page-text-${b.id}`)} />
+                </section>
+              );
+            })}
+            {page.blocks.length === 0 && <p className="hint">This page is empty. Add text to describe the mechanic, and maps to show it.</p>}
+            <div className="page-add">
+              <button type="button" className="button" onClick={() => onUpdate(page.id, g => ({ ...g, blocks: [...g.blocks, textBlock()] }))}><Plus size={14} /> Add text</button>
+              <div className="menu-wrap">
+                <button type="button" className="button" aria-haspopup="menu" aria-expanded={addMenu} onClick={() => setAddMenu(o => !o)}><Plus size={14} /> Add map</button>
+                {addMenu && (
+                  <div className="menu mechanic-menu" role="menu">
+                    {[{ label: 'Blank map', sub: `${plan.cols} × ${plan.rows} floor`, make: () => blankDiagram(plan.cols, plan.rows, `Map ${pageMaps(page).length + 1}`) },
+                      ...plan.phases.map((f, fi) => ({ label: `Copy phase ${fi + 1}: ${f.name}`, sub: 'Terrain and units as placed in that phase', make: (): Diagram => sceneToDiagram(f, plan, f.name) }))]
+                      .map(o => (
+                        <button key={o.label} type="button" role="menuitem" onClick={() => { setAddMenu(false); const d = o.make(); onUpdate(page.id, g => ({ ...g, blocks: [...g.blocks, mapBlock(d)] })); }}>
+                          <MapIcon size={14} /> <span><b>{o.label}</b><small>{o.sub}</small></span>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
           <section className="page-uses">
@@ -124,12 +146,12 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
       )}
       <aside className="sidebar right pages-details" aria-label="Details">
         {(() => {
-          const diagram = page?.diagrams?.find(d => d.id === sel?.diagramId);
+          const diagram = page ? pageMaps(page).find(d => d.id === sel?.diagramId) : undefined;
           const entity = diagram?.entities.find(e => e.id === sel?.entityId);
           if (!page || !diagram || !entity) return <p className="hint pages-details-hint">Select a unit or telegraph on one of this page's maps to edit its details.</p>;
           const scene = diagramPlan(diagram);
           const patchDiagram = (fn: (d: Diagram) => Diagram, key?: string) =>
-            onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).map(x => x.id === diagram.id ? fn(x) : x) }), key);
+            onUpdate(page.id, g => ({ ...g, blocks: g.blocks.map(x => x.id === diagram.id && x.type === 'map' ? { ...fn(x), type: 'map' as const } : x) }), key);
           return <>
             <div className="target-note">Editing <b>{diagram.caption || 'a map'}</b></div>
             <Inspector

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, aims, center, createPage, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneOf, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneOf, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -286,8 +286,8 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     const page = pageId ? plan.pages.find(g => g.id === pageId) : createPage(diagram.caption || 'New mechanic');
     if (!page) return;
     commit(p => ({ ...p, pages: pageId
-      ? p.pages.map(g => g.id === pageId ? { ...g, diagrams: [...(g.diagrams ?? []), diagram] } : g)
-      : [...p.pages, { ...page, diagrams: [diagram] }] }));
+      ? p.pages.map(g => g.id === pageId ? { ...g, blocks: [...g.blocks, mapBlock(diagram)] } : g)
+      : [...p.pages, { ...page, blocks: [...page.blocks, mapBlock(diagram)] }] }));
     notify(`Map saved to "${page.title || 'Untitled page'}"`);
   };
   const dragOver = (tile: [number, number] | null, t: Target) => {

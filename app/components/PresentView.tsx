@@ -98,15 +98,16 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                         <span className="script-turn">{m.trigger ? triggerLabel(m.trigger, phase).toUpperCase() : 'MECHANIC'}</span>
                         <span className="script-mechanic-icon"><Glyph kind={m.kind} size={12} color="#141819" strokeWidth={2.4} /></span><b>{m.name}</b>
                       </div>
-                      {li === line && page?.description && <p className="script-mechanic-page">{page.description}</p>}
-                      {li === line && (page?.diagrams ?? []).length > 0 && (
-                        <div className="script-mechanic-maps">
-                          {page!.diagrams!.map(d => (
-                            <figure key={d.id}>
-                              <BattleMap plan={diagramPlan(d)} phaseIndex={0} cell={Math.max(6, Math.floor(180 / d.cols))} coords={false} showMoves={false} />
-                              {d.caption && <figcaption>{d.caption}</figcaption>}
-                            </figure>
-                          ))}
+                      {li === line && page && page.blocks.length > 0 && (
+                        <div className="script-mechanic-blocks">
+                          {page.blocks.map(b => b.type === 'text'
+                            ? (b.text.trim() && <p key={b.id} className="script-mechanic-page">{b.text}</p>)
+                            : (
+                              <figure key={b.id} className="script-mechanic-map">
+                                <BattleMap plan={diagramPlan(b)} phaseIndex={0} cell={Math.max(6, Math.floor(260 / b.cols))} coords={false} showMoves={false} />
+                                {b.caption && <figcaption>{b.caption}</figcaption>}
+                              </figure>
+                            ))}
                         </div>
                       )}
                     </div>

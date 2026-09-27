@@ -101,7 +101,15 @@ export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: '
 export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[] };
 /** A write-up of one mechanic, shared by every telegraph that links to it (in any phase). */
 /** `kind` is the telegraph shape placed when the page is added to the timeline. */
-export type MechanicPage = { id: string; title: string; description: string; kind?: MechanicKind; diagrams?: Diagram[] };
+export type MechanicPage = { id: string; title: string; kind?: MechanicKind; blocks: PageBlock[] };
+/** A page reads top to bottom as a list of blocks, like a conversation: paragraphs of text and maps. */
+export type PageBlock = { id: string; type: 'text'; text: string } | ({ type: 'map' } & Diagram);
+export const textBlock = (text = ''): PageBlock => ({ id: uid('text'), type: 'text', text });
+export const mapBlock = (d: Diagram): PageBlock => ({ ...d, type: 'map' });
+/** A page's text, all blocks joined, for excerpts. */
+export const pageText = (page: MechanicPage) => page.blocks.flatMap(b => b.type === 'text' && b.text.trim() ? [b.text.trim()] : []).join('\n\n');
+/** A page's maps, in order. */
+export const pageMaps = (page: MechanicPage): Diagram[] => page.blocks.flatMap(b => b.type === 'map' ? [b] : []);
 /** A small map that illustrates a mechanic: its own grid, terrain and units, edited on the mechanic's page. */
 export type Diagram = { id: string; caption: string; cols: number; rows: number; terrain: Terrain[][]; entities: Entity[] };
 
@@ -153,7 +161,7 @@ export const scriptOf = (phase: Phase) => timelineOf(phase).flatMap(item => item
 export type PresentStep = { conversation: Conversation; step: ConversationStep; mechanic?: undefined } | { mechanic: Entity; conversation?: undefined; step?: undefined };
 export const presentSteps = (phase: Phase): PresentStep[] => timelineOf(phase).flatMap((item): PresentStep[] =>
   item.kind === 'conversation' ? item.conversation.lines.map(step => ({ conversation: item.conversation, step })) : [{ mechanic: item.mechanic }]);
-export const createPage = (title: string, kind: MechanicKind = 'circle'): MechanicPage => ({ id: uid('page'), title, description: '', kind });
+export const createPage = (title: string, kind: MechanicKind = 'circle'): MechanicPage => ({ id: uid('page'), title, kind, blocks: [textBlock()] });
 /** A page's telegraph shape: its own, else the shape of a telegraph already linked to it, else a circle. */
 export function pageKind(plan: Plan, page: MechanicPage): MechanicKind {
   if (page.kind) return page.kind;
@@ -363,7 +371,7 @@ export function createPlan(): Plan {
     ({ id, kind, name, code: '', x, y, radius, rotation, ...(anchor ? { anchor } : {}) });
   const scorched = baseTerrain(cols, rows).map((row, y) => row.map((t, x): Terrain => x >= 8 && x <= 11 && y >= 8 && y <= 9 ? 'lava' : t));
   return { version: 2, name: 'The Obsidian Sanctum', cols, rows, pages: [
-    { id: 'page-cleave', title: 'Frontal cleave', kind: 'cone', description: 'The Sentinel swings at whoever is in front of it.\n\nThe main tank holds it facing away from the raid. Everyone else stays out of the cone.' },
+    { id: 'page-cleave', title: 'Frontal cleave', kind: 'cone', blocks: [{ id: 'text-cleave', type: 'text', text: 'The Sentinel swings at whoever is in front of it.\n\nThe main tank holds it facing away from the raid. Everyone else stays out of the cone.' }] },
   ], phases: [
     { id: 'opening', name: 'The opening move', terrain: baseTerrain(cols, rows),
       notes: 'Tank holds the Sentinel facing north.\n\nSpread DPS on the flanks. Keep healers at the back, outside the impact zone.\n\nSave movement skills for the first cleave.',
@@ -402,15 +410,26 @@ export function migratePlan(value: unknown): unknown {
   const p = value as { version?: number; terrain?: unknown; pages?: unknown; phases?: { entities?: Record<string, unknown>[]; dialogue?: unknown; conversations?: unknown }[] };
   if (!p || typeof p !== 'object' || !Array.isArray(p.phases)) return value;
   if (p.version === 2) {
-    const clean = Array.isArray(p.pages) && p.phases.every(f => f && Array.isArray(f.conversations) && !('turns' in f) && !(f.entities ?? []).some(e => e && 'turns' in e));
+    const clean = Array.isArray(p.pages) && (p.pages as Record<string, unknown>[]).every(g => g && Array.isArray(g.blocks)) && p.phases.every(f => f && Array.isArray(f.conversations) && !('turns' in f) && !(f.entities ?? []).some(e => e && 'turns' in e));
     // Plans from before mechanic pages start with none.
-    return clean ? value : { ...p, pages: Array.isArray(p.pages) ? p.pages : [], phases: p.phases.map(f => f && withoutTurns(Array.isArray(f.conversations) ? f : toConversations(f))) };
+    return clean ? value : { ...p, pages: Array.isArray(p.pages) ? (p.pages as Record<string, unknown>[]).map(toBlocks) : [], phases: p.phases.map(f => f && withoutTurns(Array.isArray(f.conversations) ? f : toConversations(f))) };
   }
   if (p.version !== 1) return value;
   return {
     ...p, version: 2, terrain: undefined, pages: [],
     phases: p.phases.map(f => withoutTurns({ ...f, terrain: p.terrain, conversations: [], entities: Array.isArray(f.entities) ? f.entities.map(e => ({ code: '', ...e })) : f.entities })),
   };
+}
+
+/** Pages from before blocks had one description and a list of maps; they become a text block followed by map blocks. */
+function toBlocks(page: Record<string, unknown>) {
+  if (!page || Array.isArray(page.blocks)) return page;
+  const { description, diagrams, ...rest } = page as { description?: unknown; diagrams?: unknown };
+  const blocks: PageBlock[] = [
+    ...(typeof description === 'string' && description ? [{ id: uid('text'), type: 'text' as const, text: description }] : []),
+    ...(Array.isArray(diagrams) ? (diagrams as Diagram[]).map(d => ({ ...d, type: 'map' as const })) : []),
+  ];
+  return { ...rest, blocks };
 }
 
 /** The game runs in real time: phase lengths and mechanic countdowns in turns from older plans are dropped. */
@@ -461,9 +480,11 @@ export function validatePlan(value: unknown): value is Plan {
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&
     Array.isArray(p.pages) && p.pages.length <= 200 && new Set(p.pages.map(g => g?.id)).size === p.pages.length &&
-    p.pages.every(g => g && typeof g.id === 'string' && typeof g.title === 'string' && g.title.length <= 120 && typeof g.description === 'string' && g.description.length <= 20000 && (g.kind === undefined || Object.hasOwn(mechanicTypes, g.kind)) &&
-      (g.diagrams === undefined || (Array.isArray(g.diagrams) && g.diagrams.length <= 40 && g.diagrams.every(d => d && typeof d.id === 'string' && typeof d.caption === 'string' && d.caption.length <= 200 &&
-        int(d.cols, 8, 30) && int(d.rows, 8, 30) && validScene(d.terrain, d.entities, d.cols, d.rows))))) &&
+    p.pages.every(g => g && typeof g.id === 'string' && typeof g.title === 'string' && g.title.length <= 120 && (g.kind === undefined || Object.hasOwn(mechanicTypes, g.kind)) &&
+      Array.isArray(g.blocks) && g.blocks.length <= 80 && new Set(g.blocks.map(b => b?.id)).size === g.blocks.length &&
+      g.blocks.every(b => b && typeof b.id === 'string' && (
+        (b.type === 'text' && typeof b.text === 'string' && b.text.length <= 20000) ||
+        (b.type === 'map' && typeof b.caption === 'string' && b.caption.length <= 200 && int(b.cols, 8, 30) && int(b.rows, 8, 30) && validScene(b.terrain, b.entities, b.cols, b.rows))))) &&
     Array.isArray(p.phases) && p.phases.length > 0 && p.phases.length <= 30 && new Set(p.phases.map(f => f?.id)).size === p.phases.length &&
     p.phases.every(f => f && typeof f.id === 'string' && typeof f.name === 'string' && f.name.length <= 120 && typeof f.notes === 'string' && f.notes.length <= 10000 &&
       (f.timeline === undefined || (Array.isArray(f.timeline) && f.timeline.length <= 1000 && f.timeline.every(id => typeof id === 'string'))) &&

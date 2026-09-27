@@ -1,5 +1,5 @@
 'use client';
-import { ArrowDown, ArrowUp, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, GripVertical, Map as MapIcon, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import {
   MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
@@ -22,10 +22,14 @@ type Props = {
   /** The selected unit or telegraph on this map (owned by the page, which shows its details). */
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Drag-to-reorder wiring from the page's block list. */
+  cardRef?: (el: HTMLElement | null) => void;
+  cardClass?: string;
+  handleProps?: React.HTMLAttributes<HTMLElement>;
 };
 
 /** A compact map editor for one illustration on a mechanic page: paint terrain, place, move, resize and rotate. */
-export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDelete, selectedId, onSelect: setSelectedId }: Props) {
+export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDelete, selectedId, onSelect: setSelectedId, cardRef, cardClass = '', handleProps }: Props) {
   // The mouse on the map always selects and moves; palette items are dragged onto the map instead.
   const [dragItem, setDragItem] = useState<Tool | null>(null);
   const [hover, setHover] = useState<[number, number] | null>(null);
@@ -105,14 +109,15 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
   );
 
   return (
-    <section className="diagram" aria-label={d.caption || `Map ${index + 1}`}
+    <section ref={cardRef} className={`diagram page-block${cardClass}`} aria-label={d.caption || `Map ${index + 1}`}
       onKeyDown={e => { if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !(e.target as HTMLElement).closest('input, textarea, select')) { e.preventDefault(); remove(selected.id); } }}>
       <header className="diagram-head">
-        <span className="line-number">{index + 1}</span>
+        {handleProps && <button type="button" className="drag-handle" aria-label={`Reorder ${d.caption || `block ${index + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>}
+        <span className="line-number" title="Map"><MapIcon size={11} /></span>
         <input aria-label="Map caption" className="conversation-title" value={d.caption} maxLength={200} placeholder={`Map ${index + 1}`} onChange={e => onChange(x => ({ ...x, caption: e.target.value }), `${key}-caption`)} />
         <div className="story-tools">
-          <button type="button" className="icon-button" aria-label="Move map up" disabled={index === 0} onClick={() => onMove(-1)}><ArrowUp size={13} /></button>
-          <button type="button" className="icon-button" aria-label="Move map down" disabled={index === count - 1} onClick={() => onMove(1)}><ArrowDown size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Move block up" disabled={index === 0} onClick={() => onMove(-1)}><ArrowUp size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Move block down" disabled={index === count - 1} onClick={() => onMove(1)}><ArrowDown size={13} /></button>
           <button type="button" className="icon-button danger" aria-label="Delete map" onClick={() => { if (confirm(`Delete "${d.caption || `Map ${index + 1}`}"?`)) onDelete(); }}><Trash2 size={13} /></button>
         </div>
       </header>

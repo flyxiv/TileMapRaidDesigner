@@ -4,7 +4,7 @@ import { Fragment, useRef, useState } from 'react';
 import { BattleMap } from './BattleMap';
 import { MapPreviews } from './MapPreview';
 import { Glyph } from './glyphs';
-import { scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { pageMaps, pageText, scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -46,13 +46,13 @@ export function speakerColor(phase: Phase, speaker: string) {
 
 const swap = <T,>(list: T[], i: number, j: number) => { const next = list.slice(); [next[i], next[j]] = [next[j], next[i]]; return next; };
 /** Moves item `from` so it lands at position `to` among the other items. */
-const moveTo = <T,>(list: T[], from: number, to: number) => { const next = list.slice(); const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; };
+export const moveTo = <T,>(list: T[], from: number, to: number) => { const next = list.slice(); const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; };
 
 /**
  * Drag-to-reorder for the conversation cards, using pointer events on a handle so it works with mouse, touch and pen.
  * While dragging, `target` is where the card would land among the other cards (0 = first).
  */
-function useReorder(count: number, onMove: (from: number, to: number) => void) {
+export function useReorder(count: number, onMove: (from: number, to: number) => void) {
   const cards = useRef(new Map<number, HTMLElement>());
   const [drag, setDrag] = useState<{ from: number; target: number } | null>(null);
   const targetAt = (from: number, y: number) => {
@@ -314,8 +314,8 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
                 return (
                   <button key={g.id} type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onNewMechanic(g.id); }}>
                     <Glyph kind={kind} size={14} color={mechanicTone({ kind })} />
-                    <span><b>{g.title || 'Untitled page'}</b><small>{mechanicTypes[kind].name}{g.description ? ` · ${g.description.split('\n')[0].slice(0, 60)}` : ''}</small></span>
-                    <MapPreviews diagrams={g.diagrams} width={56} max={1} />
+                    <span><b>{g.title || 'Untitled page'}</b><small>{mechanicTypes[kind].name}{pageText(g) ? ` · ${pageText(g).split('\n')[0].slice(0, 60)}` : ''}</small></span>
+                    <MapPreviews diagrams={pageMaps(g)} width={56} max={1} />
                   </button>
                 );
               })}
@@ -569,8 +569,8 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
         </select>
         {page && <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open</button>}
       </div>
-      {page?.description && <p className="page-excerpt">{page.description.length > 160 ? `${page.description.slice(0, 160)}…` : page.description}</p>}
-      {page && <MapPreviews diagrams={page.diagrams} width={120} captions />}
+      {page && pageText(page) && <p className="page-excerpt">{pageText(page).length > 160 ? `${pageText(page).slice(0, 160)}…` : pageText(page)}</p>}
+      {page && <MapPreviews diagrams={pageMaps(page)} width={120} captions />}
     </section>
   );
 }
@@ -599,7 +599,7 @@ function ConversationMap({ plan, phaseIndex, conversation, caption, onSave }: { 
             <div className="menu conv-map-menu" role="menu">
               {plan.pages.map(g => (
                 <button key={g.id} type="button" role="menuitem" onClick={() => save(g.id)}>
-                  <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{(g.diagrams ?? []).length} map{(g.diagrams ?? []).length === 1 ? '' : 's'}</small></span>
+                  <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{pageMaps(g).length} map{pageMaps(g).length === 1 ? '' : 's'}</small></span>
                 </button>
               ))}
               {plan.pages.length > 0 && <hr />}
@@ -624,7 +624,7 @@ export function SaveToPageMenu({ plan, onSave }: { plan: Plan; onSave: (pageId: 
         <div className="menu conv-map-menu" role="menu">
           {plan.pages.map(g => (
             <button key={g.id} type="button" role="menuitem" onClick={() => save(g.id)}>
-              <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{(g.diagrams ?? []).length} map{(g.diagrams ?? []).length === 1 ? '' : 's'}</small></span>
+              <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{pageMaps(g).length} map{pageMaps(g).length === 1 ? '' : 's'}</small></span>
             </button>
           ))}
           {plan.pages.length > 0 && <hr />}
