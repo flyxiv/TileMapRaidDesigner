@@ -303,6 +303,15 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       : [...p.pages, { ...page, diagrams: [diagram] }] }));
     notify(`Map saved to "${page.title || 'Untitled page'}"`);
   };
+  const dragOver = (tile: [number, number] | null, t: Target) => {
+    if (!dragItem) return;
+    setHover(tile); setHoverTarget(t);
+    if (tile && dragItem.type === 'terrain') { setActiveTarget(t); commit(pl => paintOn(pl, t, brushTiles(...tile), dragItem.terrain), `drag-paint-${t}`); }
+  };
+  const dropOn = (tile: [number, number], t: Target) => {
+    if (dragItem && dragItem.type !== 'terrain') spawn(dragItem, tile, undefined, t);
+    setDragItem(null);
+  };
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
   const addPhase = () => {
     const next: Phase = { id: uid('phase'), name: `Phase ${plan.phases.length + 1}`, notes: '', terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })), conversations: [] };
@@ -360,12 +369,8 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       if (mod && k === 'y') { e.preventDefault(); redo(); return; }
       if (mod) return;
       if (k === 'escape' && picking) { setPicking(null); return; }
-      if (k === 'v' || k === 'escape') { setTool({ type: 'select' }); if (k === 'escape') { setSelectedId(null); setShortcuts(false); setMenu(false); } }
-      else if (k === 'e') setTool({ type: 'erase' });
+      if (k === 'escape') { setSelectedId(null); setShortcuts(false); setMenu(false); }
       else if (k === 'r' && selected && isUnit(selected.kind)) patchEntity(selected.id, { rotation: (selected.rotation + (e.shiftKey ? 315 : 45)) % 360 }, `rotate-${selected.id}`);
-      else if (k === 't') setTool(tl => tl.type === 'terrain' ? tl : { type: 'terrain', terrain: 'floor' });
-      else if (k === 'u') setTool(tl => tl.type === 'unit' ? tl : { type: 'unit', kind: 'dps' });
-      else if (k === 'm') setTool(tl => tl.type === 'mechanic' ? tl : { type: 'mechanic', kind: 'circle' });
       else if (k === 'p') setPresenting(true);
       else if (k === '[') goPhase(pi - 1);
       else if (k === ']') goPhase(pi + 1);
@@ -440,7 +445,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             transform={isActive && tool.type === 'select' && !(selectedId && displacedIn(t, selectedId))}
             highlight={hoverTarget === t ? highlight : null} speech={here ? speech : null} stage={here ? stage : null}
             onPointer={pointerFor(t)} onLeave={() => setHover(null)}
-            onDragTile={tile => { if (dragItem) { setHover(tile); setHoverTarget(t); } }} onDropTile={tile => { if (dragItem) spawn(dragItem, tile, undefined, t); setDragItem(null); }} />
+            onDragTile={tile => dragOver(tile, t)} onDropTile={tile => dropOn(tile, t)} />
         </div>
       </div>
     );
@@ -501,7 +506,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <div className="section-title">Terrain <span>Drag or paint · T</span></div>
               <div className="grid-3">
                 {(Object.keys(terrainTypes) as Terrain[]).map(t => (
-                  <button key={t} type="button" className={`tool-tile${isTool({ type: 'terrain', terrain: t }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'terrain', terrain: t })} onClick={() => setTool({ type: 'terrain', terrain: t })} {...dragProps({ type: 'terrain', terrain: t })}>
+                  <button key={t} type="button" className="tool-tile" title={`Drag across a map to paint ${terrainTypes[t].name.toLowerCase()}`} onClick={() => notify('Drag it onto a map to place it')} {...dragProps({ type: 'terrain', terrain: t })}>
                     <span className={`swatch ${t}`} />{terrainTypes[t].name}
                   </button>
                 ))}
@@ -514,7 +519,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                   <div className="unit-group-title">{unitCategories[cat].name}</div>
                   <div className="grid-3">
                     {unitsIn(cat).map(k => (
-                      <button key={k} type="button" className={`tool-tile unit${isTool({ type: 'unit', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'unit', kind: k })} onClick={() => setTool({ type: 'unit', kind: k })} {...dragProps({ type: 'unit', kind: k })}>
+                      <button key={k} type="button" className="tool-tile unit" title={`Drag onto a map to place a ${unitTypes[k].name.toLowerCase()}`} onClick={() => notify('Drag it onto a map to place it')} {...dragProps({ type: 'unit', kind: k })}>
                         <span className="unit-dot" style={{ borderColor: unitTypes[k].color }}><Glyph kind={k} size={13} color={unitTypes[k].color} strokeWidth={2.2} /></span>{unitTypes[k].name}
                       </button>
                     ))}
@@ -526,13 +531,13 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <div className="section-title">Mechanics <span>Drag or place · M</span></div>
               <div className="grid-3">
                 {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => (
-                  <button key={k} type="button" className={`tool-tile tall${isTool({ type: 'mechanic', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'mechanic', kind: k })} title={mechanicTypes[k].description} onClick={() => setTool({ type: 'mechanic', kind: k })} {...dragProps({ type: 'mechanic', kind: k })}>
+                  <button key={k} type="button" className="tool-tile tall" title={`${mechanicTypes[k].description}. Drag onto a map to place it.`} onClick={() => notify('Drag it onto a map to place it')} {...dragProps({ type: 'mechanic', kind: k })}>
                     <Glyph kind={k} size={22} color={mechanicTone({ kind: k })} strokeWidth={1.8} />{mechanicTypes[k].name}
                   </button>
                 ))}
               </div>
             </section>
-            {tool.type === 'terrain' && (
+            {(
               <section className="tool-options">
                 <label className="field"><span className="field-line">Brush size <b>{brush} × {brush}</b></span>
                   <input type="range" min={1} max={5} value={brush} onChange={e => setBrush(Number(e.target.value))} />
@@ -558,14 +563,11 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
           <div className="canvas-toolbar">
             <div className="toolbar-group">
-              <button type="button" className={`icon-button${tool.type === 'select' ? ' active' : ''}`} aria-label="Select and move (V)" title="Select and move (V)" onClick={() => setTool({ type: 'select' })}><MousePointer2 size={16} /></button>
-              <button type="button" className={`icon-button${tool.type === 'erase' ? ' active' : ''}`} aria-label="Erase (E)" title="Erase (E)" onClick={() => setTool({ type: 'erase' })}><Eraser size={16} /></button>
-              <span className="divider" />
               <button type="button" className="icon-button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!hist.past.length} onClick={undo}><Undo2 size={16} /></button>
               <button type="button" className="icon-button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!hist.future.length} onClick={redo}><Redo2 size={16} /></button>
             </div>
             <div className="toolbar-center">
-              {picking ? <span><b>{picking.label ?? 'Click a tile to set where they move'}</b> · Esc to cancel</span> : <span>Tool: <b>{toolLabel}</b></span>}
+              {picking ? <span><b>{picking.label ?? 'Click a tile to set where they move'}</b> · Esc to cancel</span> : <span>Drag from the palette onto a map · click to select, drag to move · Delete removes</span>}
               {hover && phase.terrain[hover[1]]?.[hover[0]] && <><i>·</i><span>Tile <b>{tileLabel(...hover)}</b> {terrainTypes[phase.terrain[hover[1]][hover[0]]].name}</span></>}
             </div>
             {view === 'map' && <div className="toolbar-group">
@@ -616,7 +618,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={activeTarget === 'base' ? selectedId : null}
                 showMoves={layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
                 highlight={hoverTarget === 'base' ? highlight : null} transform={activeTarget === 'base' && tool.type === 'select'} onPointer={onPointer} onLeave={() => setHover(null)}
-                onDragTile={t => { if (dragItem) { setHover(t); setHoverTarget('base'); } }} onDropTile={t => { if (dragItem) spawn(dragItem, t, undefined, 'base'); setDragItem(null); }}
+                onDragTile={t => dragOver(t, 'base')} onDropTile={t => dropOn(t, 'base')}
               />
             </div>
             <div className="map-legend">
@@ -690,7 +692,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <button type="button" className="icon-button dialog-close" aria-label="Close" onClick={() => setShortcuts(false)}><X size={16} /></button>
             <h2 id="shortcuts-title">Keyboard shortcuts</h2>
             <dl>
-              {[['V', 'Select and move'], ['E', 'Erase'], ['T / U / M', 'Terrain, unit, mechanic tools'], ['Arrow keys', 'Nudge selection one tile'], ['R / Shift+R', 'Rotate unit 45°'], ['Delete', 'Remove selection'],
+              {[['Drag from palette', 'Place a unit or telegraph; drag terrain across tiles to paint'], ['Arrow keys', 'Nudge selection one tile'], ['R / Shift+R', 'Rotate unit 45°'], ['Delete', 'Remove selection'],
                 ['[ and ]', 'Previous / next phase'], ['Ctrl+Z', 'Undo'], ['Ctrl+Shift+Z', 'Redo'], ['P', 'Present mode'], ['Esc', 'Deselect']].map(([k, v]) => (
                 <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>
               ))}

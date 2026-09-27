@@ -22,7 +22,7 @@ export function Inspector({ plan, phase, prevPhase, entity, onChange, onDelete, 
     <>
       <div className="inspector-block">
         <div className="section-title">Telegraphs this phase</div>
-        {mechanics.length === 0 && <p className="hint">No telegraphs yet. Pick Circle, Cone or Marker and click the map.</p>}
+        {mechanics.length === 0 && <p className="hint">No telegraphs yet. Drag one from the palette onto the map.</p>}
         <div className="chip-row">
           {mechanics.map(m => (
             <button key={m.id} type="button" className={`mech-chip${entity?.id === m.id ? ' active' : ''}`} style={{ '--tone': mechanicTone(m) } as React.CSSProperties} aria-pressed={entity?.id === m.id} onClick={() => onSelect(m.id)}>

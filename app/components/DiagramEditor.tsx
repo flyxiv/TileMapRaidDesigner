@@ -1,5 +1,5 @@
 'use client';
-import { ArrowDown, ArrowUp, Eraser, MousePointer2, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import {
   MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
@@ -19,12 +19,15 @@ type Props = {
   onChange: (fn: (d: Diagram) => Diagram, coalesceKey?: string) => void;
   onMove: (by: number) => void;
   onDelete: () => void;
+  /** The selected unit or telegraph on this map (owned by the page, which shows its details). */
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
 };
 
 /** A compact map editor for one illustration on a mechanic page: paint terrain, place, move, resize and rotate. */
-export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDelete }: Props) {
-  const [tool, setTool] = useState<Tool>({ type: 'select' });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDelete, selectedId, onSelect: setSelectedId }: Props) {
+  // The mouse on the map always selects and moves; palette items are dragged onto the map instead.
+  const [dragItem, setDragItem] = useState<Tool | null>(null);
   const [hover, setHover] = useState<[number, number] | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const plan = diagramPlan(d), phase = plan.phases[0];
@@ -34,7 +37,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
 
   const setEntities = (fn: (entities: Entity[], dd: Diagram) => Entity[], k = key) => onChange(x => ({ ...x, entities: fn(x.entities, x) }), k);
   const patch = (id: string, p: Partial<Entity>, k?: string) => setEntities((es, x) => es.map(e => e.id === id ? clampEntity({ ...e, ...p }, diagramPlan(x)) : e), k);
-  const remove = (id: string) => { setEntities(es => es.filter(e => e.id !== id).map(e => e.anchor === id ? { ...e, anchor: undefined } : e), `${key}-delete`); setSelectedId(s => s === id ? null : s); };
+  const remove = (id: string) => { setEntities(es => es.filter(e => e.id !== id).map(e => e.anchor === id ? { ...e, anchor: undefined } : e), `${key}-delete`); if (selectedId === id) setSelectedId(null); };
 
   const onPointer = (p: MapPointer) => {
     if (p.type === 'up') { gesture.current = null; return; }
@@ -62,7 +65,6 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
         }
       }
       if (!p.tile) return;
-      if (g.mode === 'paint' && tool.type === 'terrain') paint(p.tile, tool.terrain);
       if (g.mode === 'drag' && target && g.offset) {
         const [x, y] = [p.tile[0] - g.offset[0], p.tile[1] - g.offset[1]];
         if (x !== target.x || y !== target.y) patch(target.id, { x, y });
@@ -71,48 +73,35 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
     }
     const tile = p.tile;
     const hit = p.entityId ? d.entities.find(e => e.id === p.entityId) : tile ? entityAt(phase, ...tile) : undefined;
-    switch (tool.type) {
-      case 'select':
-        if (p.handle) { gesture.current = p.handle.kind === 'rotate' ? { mode: 'rotate', id: p.handle.id } : { mode: 'resize', id: p.handle.id, corner: p.handle.kind }; break; }
-        setSelectedId(hit?.id ?? null);
-        if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
-        break;
-      case 'erase':
-        if (hit) remove(hit.id);
-        break;
-      case 'terrain':
-        if (tile) { gesture.current = { mode: 'paint' }; paint(tile, tool.terrain); }
-        break;
-      case 'unit': {
-        if (!tile) break;
-        const { code, name } = nextCode(phase, tool.kind);
-        const e = clampEntity({ id: uid(tool.kind), kind: tool.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0 }, plan);
-        setEntities(es => [...es, e], `${key}-add`);
-        setSelectedId(e.id);
-        break;
-      }
-      case 'mechanic': {
-        if (!tile) break;
-        let e = createMechanic(tool.kind, tile[0], tile[1]);
-        const on = entityAt(phase, ...tile);
-        if (on && isUnit(on.kind) && tool.kind !== 'armageddon') e = { ...e, anchor: on.id, ...(aims(tool.kind) ? { followFacing: true } : {}) };
-        setEntities(es => [...es, e], `${key}-add`);
-        setSelectedId(e.id);
-        break;
-      }
-    }
+    if (p.handle) { gesture.current = p.handle.kind === 'rotate' ? { mode: 'rotate', id: p.handle.id } : { mode: 'resize', id: p.handle.id, corner: p.handle.kind }; return; }
+    setSelectedId(hit?.id ?? null);
+    if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
+  };
+  const placeAt = (item: Tool, tile: [number, number]) => {
+    let e: Entity;
+    if (item.type === 'unit') {
+      const { code, name } = nextCode(phase, item.kind);
+      e = clampEntity({ id: uid(item.kind), kind: item.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0 }, plan);
+    } else if (item.type === 'mechanic') {
+      e = createMechanic(item.kind, tile[0], tile[1]);
+      const on = entityAt(phase, ...tile);
+      if (on && isUnit(on.kind) && item.kind !== 'armageddon') e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
+    } else return;
+    setEntities(es => [...es, e], `${key}-add`);
+    setSelectedId(e.id);
   };
   const paint = ([x, y]: [number, number], terrain: Terrain) => {
     if (d.terrain[y][x] === terrain) return;
     onChange(dd => ({ ...dd, terrain: dd.terrain.map((row, ry) => ry === y ? row.map((t, rx) => rx === x ? terrain : t) : row) }), `${key}-paint`);
   };
 
-  const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
-  const placing = tool.type === 'unit' || tool.type === 'mechanic' ? tool : null;
-  const highlight = hover && tool.type === 'terrain' ? { x: hover[0], y: hover[1], size: 1 }
+  const placing = dragItem && (dragItem.type === 'unit' || dragItem.type === 'mechanic') ? dragItem : null;
+  const highlight = hover && dragItem?.type === 'terrain' ? { x: hover[0], y: hover[1], size: 1 }
     : hover && placing ? { x: Math.min(hover[0], d.cols - footprint(placing)), y: Math.min(hover[1], d.rows - footprint(placing)), size: footprint(placing) } : null;
   const toolButton = (t: Tool, label: string, icon: React.ReactNode) => (
-    <button key={label} type="button" className={`diagram-tool${isTool(t) ? ' active' : ''}`} aria-pressed={isTool(t)} aria-label={label} title={label} onClick={() => setTool(t)}>{icon}</button>
+    <button key={label} type="button" className="diagram-tool" aria-label={label} title={`Drag onto the map: ${label.toLowerCase()}`} draggable
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', t.type); setDragItem(t); }}
+      onDragEnd={() => { setDragItem(null); setHover(null); }}>{icon}</button>
   );
 
   return (
@@ -127,19 +116,18 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
           <button type="button" className="icon-button danger" aria-label="Delete map" onClick={() => { if (confirm(`Delete "${d.caption || `Map ${index + 1}`}"?`)) onDelete(); }}><Trash2 size={13} /></button>
         </div>
       </header>
-      <div className="diagram-tools" role="toolbar" aria-label="Map tools">
-        {toolButton({ type: 'select' }, 'Select and move', <MousePointer2 size={14} />)}
-        {toolButton({ type: 'erase' }, 'Erase', <Eraser size={14} />)}
-        <span className="divider" />
+      <div className="diagram-tools" role="toolbar" aria-label="Drag onto the map">
         {(Object.keys(terrainTypes) as Terrain[]).map(t => toolButton({ type: 'terrain', terrain: t }, `Paint ${terrainTypes[t].name}`, <span className={`swatch mini ${t}`} />))}
         <span className="divider" />
         {(Object.keys(unitTypes) as UnitKind[]).map(k => toolButton({ type: 'unit', kind: k }, `Place ${unitTypes[k].name}`, <Glyph kind={k} size={14} color={unitTypes[k].color} strokeWidth={2.2} />))}
         <span className="divider" />
         {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => toolButton({ type: 'mechanic', kind: k }, `Place ${mechanicTypes[k].name}`, <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} />))}
       </div>
-      <div className={`diagram-map mode-${tool.type}`}>
+      <div className="diagram-map">
         <BattleMap className="battlemap" plan={plan} phaseIndex={0} cell={cell} showMoves={false} selectedId={selectedId}
-          transform={tool.type === 'select'} highlight={highlight} onPointer={onPointer} onLeave={() => setHover(null)} />
+          transform highlight={highlight} onPointer={onPointer} onLeave={() => setHover(null)}
+          onDragTile={tile => { setHover(tile); if (tile && dragItem?.type === 'terrain') paint(tile, dragItem.terrain); }}
+          onDropTile={tile => { if (dragItem) placeAt(dragItem, tile); setDragItem(null); }} />
       </div>
       {selected && (
         <div className="diagram-selection">

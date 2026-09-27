@@ -2,8 +2,9 @@
 import { BookOpen, Map as MapIcon, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { DiagramEditor } from './DiagramEditor';
+import { Inspector } from './Inspector';
 import { MapPreviews } from './MapPreview';
-import { blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
+import { clampEntity, diagramPlan, blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -29,6 +30,8 @@ export function pageUses(plan: Plan, pageId: string) {
 /** One write-up per mechanic, shared by every telegraph that links to it from the map or the timeline. */
 export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUpdate, onDelete, onShow }: Props) {
   const [addMenu, setAddMenu] = useState(false);
+  /** The unit or telegraph selected on one of the page's maps, shown in the Details column. */
+  const [sel, setSel] = useState<{ diagramId: string; entityId: string } | null>(null);
   const page = plan.pages.find(p => p.id === pageId) ?? plan.pages[0];
   const uses = page ? pageUses(plan, page.id) : [];
   return (
@@ -73,6 +76,7 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
             {(page.diagrams ?? []).length === 0 && <p className="hint">No maps yet. Add a blank map, copy a phase, or save a conversation's map from the Timeline.</p>}
             {(page.diagrams ?? []).map((d, i, all) => (
               <DiagramEditor key={d.id} diagram={d} index={i} count={all.length}
+                selectedId={sel?.diagramId === d.id ? sel.entityId : null} onSelect={id => setSel(id ? { diagramId: d.id, entityId: id } : null)}
                 onChange={(fn, key) => onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).map(x => x.id === d.id ? fn(x) : x) }), key)}
                 onMove={by => onUpdate(page.id, g => { const ds = (g.diagrams ?? []).slice(); [ds[i], ds[i + by]] = [ds[i + by], ds[i]]; return { ...g, diagrams: ds }; })}
                 onDelete={() => onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).filter(x => x.id !== d.id) }))} />
@@ -118,6 +122,25 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
           <button type="button" className="button primary" onClick={onCreate}><Plus size={14} /> New page</button>
         </div>
       )}
+      <aside className="sidebar right pages-details" aria-label="Details">
+        {(() => {
+          const diagram = page?.diagrams?.find(d => d.id === sel?.diagramId);
+          const entity = diagram?.entities.find(e => e.id === sel?.entityId);
+          if (!page || !diagram || !entity) return <p className="hint pages-details-hint">Select a unit or telegraph on one of this page's maps to edit its details.</p>;
+          const scene = diagramPlan(diagram);
+          const patchDiagram = (fn: (d: Diagram) => Diagram, key?: string) =>
+            onUpdate(page.id, g => ({ ...g, diagrams: (g.diagrams ?? []).map(x => x.id === diagram.id ? fn(x) : x) }), key);
+          return <>
+            <div className="target-note">Editing <b>{diagram.caption || 'a map'}</b></div>
+            <Inspector
+              plan={scene} phase={scene.phases[0]} prevPhase={null} entity={entity}
+              onChange={(patch, key) => patchDiagram(d => ({ ...d, entities: d.entities.map(e => e.id === entity.id ? clampEntity({ ...e, ...patch }, diagramPlan(d)) : e) }), key && `page-${key}`)}
+              onDelete={() => { patchDiagram(d => ({ ...d, entities: d.entities.filter(e => e.id !== entity.id).map(e => e.anchor === entity.id ? { ...e, anchor: undefined } : e) })); setSel(null); }}
+              onSelect={id => setSel({ diagramId: diagram.id, entityId: id })}
+            />
+          </>;
+        })()}
+      </aside>
     </div>
   );
 }

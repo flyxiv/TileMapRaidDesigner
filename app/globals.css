@@ -394,7 +394,7 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .view-switch { display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: #1b2021; border: 1px solid var(--line); }
 .view-switch button { height: 28px; padding: 0 12px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .view-switch button[aria-selected=true] { background: var(--accent-bg); color: var(--accent); }
-.pages { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
+.pages { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr) 300px; }
 .pages-list { background: var(--panel); border-right: 1px solid var(--line); padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
 .pages-list nav { display: flex; flex-direction: column; gap: 4px; }
 .pages-item { text-align: left; padding: 10px 12px; border-radius: 6px; display: flex; flex-direction: column; gap: 3px; border: 1px solid transparent; }
@@ -493,3 +493,5 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .pages-item .map-previews { margin-top: 4px; }
 .mechanic-menu button .map-previews { margin-left: auto; }
 .story.wide .conversation.mechanic-item { flex-direction: column; align-items: stretch; gap: 10px; }
+.pages-details { overflow-y: auto; }
+.pages-details-hint { padding: 20px 18px; }
