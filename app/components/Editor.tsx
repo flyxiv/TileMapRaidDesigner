@@ -272,6 +272,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     } else return;
     commit(pl => updateTarget(pl, t, f => ({ ...f, entities: [...f.entities, e] })));
     setSelectedId(e.id);
+    return e.id;
   };
 
   // Toolbox items can also be dragged straight onto the map.
@@ -567,15 +568,27 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 onDeleteMechanic={id => { deleteEntity(id, 'base'); notify('Telegraph deleted. Ctrl+Z to undo.'); }}
                 onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
                 onOpenPage={id => { setPageId(id); setView('pages'); }}
-                placingMechanic={picking?.placing ?? null}
                 onSaveDiagram={saveDiagram}
                 onNewMechanic={id => {
                   // A telegraph placed from a page takes the page's shape and name, and links back to it.
                   const page = plan.pages.find(g => g.id === id);
                   if (!page) return;
                   const kind = pageKind(plan, page), extra = { name: page.title || mechanicTypes[kind].name, page: page.id };
-                  if (kind === 'armageddon') spawn({ type: 'mechanic', kind }, [0, 0], extra); // arena-wide: nothing to place
-                  else setPicking({ placing: page.id, label: `Click a tile to place ${extra.name} (on a unit to attach it)`, apply: (tile: [number, number], t: Target) => spawn({ type: 'mechanic', kind }, tile, extra, t) });
+                  // It goes straight onto the timeline: cones and lines start from the boss (facing where it faces), anything
+                  // else sits mid-arena, ready to be dragged into place on the map.
+                  const boss = phase.entities.find(e => e.kind === 'boss') ?? phase.entities.find(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === 'enemies');
+                  const freeNearCenter = (): [number, number] => {
+                    const cx = Math.floor(plan.cols / 2), cy = Math.floor(plan.rows / 2);
+                    for (let r = 0; r < Math.max(plan.cols, plan.rows); r++)
+                      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+                        const x = cx + dx, y = cy + dy;
+                        if (x >= 0 && y >= 0 && x < plan.cols && y < plan.rows && !entityAt(phase, x, y)) return [x, y];
+                      }
+                    return [cx, cy];
+                  };
+                  const tile: [number, number] = aims(kind) && boss ? [boss.x, boss.y] : freeNearCenter();
+                  const id2 = spawn({ type: 'mechanic', kind }, tile, extra, 'base');
+                  requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id2}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
                 }}
                 pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}
                 renderMap={c => mapCard(c.id, c)}

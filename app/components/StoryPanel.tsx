@@ -29,10 +29,8 @@ type Props = {
   wide?: boolean;
   renderMap?: (c: Conversation) => React.ReactNode;
   start?: React.ReactNode;
-  /** Start placing a telegraph for a mechanic page: the next map click puts it there. */
+  /** Add a telegraph for a mechanic page to the end of the timeline. */
   onNewMechanic: (pageId: string) => void;
-  /** The page whose telegraph is waiting to be placed. */
-  placingMechanic: string | null;
   /** Asks the editor for the next tile clicked on the map; `null` while no pick is pending. */
   onPickTile: (apply: ((tile: [number, number]) => void) | null) => void;
   pickingFor: string | null;
@@ -189,9 +187,8 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onDeleteMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, start }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onDeleteMechanic, onCreatePage, onOpenPage, onNewMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, start }: Props) {
   const [mechanicMenu, setMechanicMenu] = useState(false);
-  const placingPage = placingMechanic ? plan.pages.find(g => g.id === placingMechanic) : undefined;
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
   const items = timelineOf(phase);
@@ -303,8 +300,8 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
       <div className="timeline-add">
         <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
         <div className="menu-wrap">
-          <button type="button" className={`button story-add${placingMechanic ? ' placing' : ''}`} aria-haspopup="menu" aria-expanded={mechanicMenu} onClick={() => setMechanicMenu(o => !o)}>
-            <Plus size={14} /> {placingPage ? `Click the map to place ${placingPage.title || 'it'}` : 'New mechanic'}
+          <button type="button" className="button story-add" aria-haspopup="menu" aria-expanded={mechanicMenu} onClick={() => setMechanicMenu(o => !o)}>
+            <Plus size={14} /> New mechanic
           </button>
           {mechanicMenu && (
             <div className="menu mechanic-menu" role="menu">
@@ -547,7 +544,7 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
   const page = pages.find(g => g.id === m.page);
   const tone = mechanicTone(m);
   return (
-    <section ref={cardRef} className={`conversation mechanic-item${cardClass}`} style={{ '--tone': tone } as React.CSSProperties} aria-label={`Mechanic: ${m.name}`}>
+    <section ref={cardRef} data-timeline-id={m.id} className={`conversation mechanic-item${cardClass}`} style={{ '--tone': tone } as React.CSSProperties} aria-label={`Mechanic: ${m.name}`}>
       <header className="conversation-head">
         <button type="button" className="drag-handle" aria-label={`Reorder ${m.name}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>
         <span className="mechanic-item-icon"><Glyph kind={m.kind} size={14} color="#141819" strokeWidth={2.2} /></span>
