@@ -39,7 +39,7 @@ export const mechanicTypes = {
 export const tones = { telegraph: '#dbb36d', safe: '#c6eb95', soak: '#86c5f2' };
 /** Which settings a mechanic kind uses. */
 export const mechanicFields = (kind: Kind) => ({
-  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line', inner: kind === 'donut',
+  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line', angle: kind === 'cone', inner: kind === 'donut',
   width: kind === 'line', push: kind === 'knockback', soak: kind === 'tower', origin: kind !== 'armageddon',
 });
 
@@ -52,6 +52,8 @@ export type Entity = {
   id: string; kind: Kind; name: string; code: string; x: number; y: number; radius: number; rotation: number; anchor?: string;
   /** Donut safe radius, line width, knockback distance and tower soak count, for the mechanics that use them. */
   inner?: number; width?: number; push?: number; soak?: number;
+  /** Cones only: the spread in degrees (default 90). */
+  angle?: number;
   /** Units only: tiles per side, overriding the type's usual size. */
   size?: number;
   /** Cones and lines that start from a unit: aim the way that unit faces instead of their own rotation. */
@@ -277,7 +279,8 @@ export const aims = (kind: Kind) => kind === 'cone' || kind === 'line';
 export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, number, number][] {
   const { point: [cx, cy], anchor } = mechanicOrigin(m, phase.entities);
   const a = (mechanicFacing(m, phase.entities) * Math.PI) / 180, dir = [Math.sin(a), -Math.cos(a)];
-  const halfAngle = Math.cos((46 * Math.PI) / 180);
+  // A tile is in a cone when its center is within half the spread of the facing (plus a degree of slack for edges).
+  const halfAngle = Math.cos((Math.min(180, (m.angle ?? 90) / 2 + 1) * Math.PI) / 180);
   const inAnchor = (x: number, y: number) => !!anchor && x >= anchor.x && x < anchor.x + footprint(anchor) && y >= anchor.y && y < anchor.y + footprint(anchor);
   const safeZones = m.kind === 'armageddon' ? phase.entities.filter(e => e.kind === 'marker').map(s => ({ c: mechanicOrigin(s, phase.entities).point, r: s.radius })) : [];
   const tiles: [number, number, number][] = [];
@@ -475,7 +478,7 @@ export function validatePlan(value: unknown): value is Plan {
       (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
-      num(e.inner, 0.5, 7.5) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
+      num(e.inner, 0.5, 7.5) && num(e.angle, 10, 360) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
       (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&

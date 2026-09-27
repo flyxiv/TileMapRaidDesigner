@@ -161,6 +161,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
     {show.width && <Slider label="Width" value={m.width ?? 1} unit={(m.width ?? 1) === 1 ? 'tile' : 'tiles'} min={1} max={8} step={1} onChange={v => onChange({ width: v }, `width-${m.id}`)} />}
     {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
     {show.soak && <Slider label="Players needed" value={m.soak ?? 1} unit={(m.soak ?? 1) === 1 ? 'player' : 'players'} min={1} max={8} step={1} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
+    {show.angle && <Slider label="Spread" value={m.angle ?? 90} unit="°" min={15} max={360} step={15} onChange={v => onChange({ angle: v }, `angle-${m.id}`)} />}
     {show.facing && !(anchor && m.followFacing) && (
       <label className="field">
         <span className="field-line">Facing <b>{facingLabel(m.rotation)}</b></span>

@@ -209,9 +209,11 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
     case 'knockback': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={C * 0.45} to={C * 0.45 + (m.push ?? 2) * C} count={8} tone={tone} head={head} /></>; break;
     case 'donut': shape = <>{ring(R)}<circle cx={cx} cy={cy} r={(m.inner ?? 1) * C} fill="none" stroke={tones.safe} strokeWidth={width} /></>; break;
     case 'cone': {
-      const R2 = (m.radius + 0.3) * C, h = Math.PI / 4;
+      const R2 = (m.radius + 0.3) * C, spread = Math.min(360, m.angle ?? 90), h = (spread * Math.PI) / 360;
       const p = (t: number) => `${cx + R2 * Math.sin(t)} ${cy - R2 * Math.cos(t)}`;
-      shape = <path d={`M${cx} ${cy} L${p(a - h)} A${R2} ${R2} 0 0 1 ${p(a + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
+      shape = spread >= 360
+        ? <circle cx={cx} cy={cy} r={R2} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />
+        : <path d={`M${cx} ${cy} L${p(a - h)} A${R2} ${R2} 0 ${spread > 180 ? 1 : 0} 1 ${p(a + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
       break;
     }
     case 'line': {
