@@ -2,6 +2,7 @@
 import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
 import { BattleMap } from './BattleMap';
+import { MapPreviews } from './MapPreview';
 import { Glyph } from './glyphs';
 import { scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
@@ -313,6 +314,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
                   <button key={g.id} type="button" role="menuitem" onClick={() => { setMechanicMenu(false); onNewMechanic(g.id); }}>
                     <Glyph kind={kind} size={14} color={mechanicTone({ kind })} />
                     <span><b>{g.title || 'Untitled page'}</b><small>{mechanicTypes[kind].name}{g.description ? ` · ${g.description.split('\n')[0].slice(0, 60)}` : ''}</small></span>
+                    <MapPreviews diagrams={g.diagrams} width={56} max={1} />
                   </button>
                 );
               })}
@@ -566,6 +568,7 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
         {page && <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open</button>}
       </div>
       {page?.description && <p className="page-excerpt">{page.description.length > 160 ? `${page.description.slice(0, 160)}…` : page.description}</p>}
+      {page && <MapPreviews diagrams={page.diagrams} width={120} captions />}
     </section>
   );
 }

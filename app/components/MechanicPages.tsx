@@ -2,6 +2,7 @@
 import { BookOpen, Map as MapIcon, MapPin, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { DiagramEditor } from './DiagramEditor';
+import { MapPreviews } from './MapPreview';
 import { blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
 import { Glyph } from './glyphs';
 
@@ -41,7 +42,8 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
             return (
               <button key={p.id} type="button" className={`pages-item${p.id === page?.id ? ' active' : ''}`} aria-current={p.id === page?.id ? 'page' : undefined} onClick={() => onSelect(p.id)}>
                 <b>{p.title || 'Untitled page'}</b>
-                <small>{count ? `Used ${count} time${count > 1 ? 's' : ''}` : 'Not linked yet'}</small>
+                <small>{count ? `Used ${count} time${count > 1 ? 's' : ''}` : 'Not linked yet'}{(p.diagrams ?? []).length ? ` · ${(p.diagrams ?? []).length} map${(p.diagrams ?? []).length > 1 ? 's' : ''}` : ''}</small>
+                <MapPreviews diagrams={p.diagrams} width={110} max={1} />
               </button>
             );
           })}
