@@ -431,13 +431,13 @@ function HeadMarker({ u, C }: { u: Entity; C: number }) {
 
 /** A world marker: a translucent circle (A–D) or square (1–4) with its letter or number. */
 function Waymark({ k, at: [x, y], C, selected }: { k: WaymarkKey; at: [number, number]; C: number; selected: boolean }) {
-  const { shape, color } = waymarkTypes[k];
+  const { color } = waymarkTypes[k];
   const cx = (x + 0.5) * C, cy = (y + 0.5) * C, r = C * 0.44;
   const outline = { fill: color, fillOpacity: 0.22, stroke: color, strokeWidth: Math.max(1.5, C * 0.07) };
   return (
     <g data-waymark={k} className="waymark" aria-label={`Waymark ${k}`}>
       {selected && <rect x={x * C - 2} y={y * C - 2} width={C + 4} height={C + 4} rx={4} fill="none" stroke="#e8f5d8" strokeWidth="1.5" strokeDasharray="4 3" />}
-      {shape === 'circle' ? <circle cx={cx} cy={cy} r={r} {...outline} /> : <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={C * 0.06} {...outline} />}
+      <rect x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={C * 0.06} {...outline} />
       {C >= 12 && <text x={cx} y={cy + 0.5} textAnchor="middle" dominantBaseline="central" fontSize={C * 0.52} fontWeight="800" fill="#fff" stroke={color} strokeWidth={C * 0.06} paintOrder="stroke">{k}</text>}
     </g>
   );

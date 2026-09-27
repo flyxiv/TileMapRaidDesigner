@@ -111,10 +111,10 @@ export type Scene = { terrain: Terrain[][]; units: Entity[] };
 export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: 'After mechanic' };
 /** `timeline` orders the phase's conversations and telegraphs (by id); anything missing from it follows at the end. */
 export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[]; waymarks?: Waymarks };
-/** World markers on the floor, as in FFXIV: A–D circles and 1–4 squares, one of each, shown on every map of a phase. */
+/** World markers on the floor, as in FFXIV: A–D and 1–4 squares, one of each, shown on every map of a phase. */
 export const waymarkTypes = {
-  A: { shape: 'circle', color: '#ec5b55' }, B: { shape: 'circle', color: '#eccb4c' }, C: { shape: 'circle', color: '#5aa6ee' }, D: { shape: 'circle', color: '#b877ec' },
-  '1': { shape: 'square', color: '#ec5b55' }, '2': { shape: 'square', color: '#eccb4c' }, '3': { shape: 'square', color: '#5aa6ee' }, '4': { shape: 'square', color: '#b877ec' },
+  A: { color: '#ec5b55' }, B: { color: '#eccb4c' }, C: { color: '#5aa6ee' }, D: { color: '#b877ec' },
+  '1': { color: '#ec5b55' }, '2': { color: '#eccb4c' }, '3': { color: '#5aa6ee' }, '4': { color: '#b877ec' },
 } as const;
 export type WaymarkKey = keyof typeof waymarkTypes;
 /** In palette order (object keys would put the numbers first). */

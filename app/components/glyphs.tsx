@@ -71,13 +71,13 @@ export function MarkerIcon({ kind, size = 18 }: { kind: MarkerKind; size?: numbe
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><MarkerShape kind={kind} /></svg>;
 }
 
-/** A world marker for palettes: circle (A–D) or square (1–4) with its label. */
+/** A world marker for palettes: a square with its label. */
 export function WaymarkIcon({ k, size = 20 }: { k: WaymarkKey; size?: number }) {
-  const { shape, color } = waymarkTypes[k];
+  const { color } = waymarkTypes[k];
   const outline = { fill: color, fillOpacity: 0.25, stroke: color, strokeWidth: 1.6 };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      {shape === 'circle' ? <circle cx="12" cy="12" r="10" {...outline} /> : <rect x="2" y="2" width="20" height="20" rx="2" {...outline} />}
+      <rect x="2" y="2" width="20" height="20" rx="2" {...outline} />
       <text x="12" y="12.6" textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="800" fill="#fff" fontFamily="'DM Sans', sans-serif">{k}</text>
     </svg>
   );
