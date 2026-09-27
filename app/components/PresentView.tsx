@@ -100,6 +100,9 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                         <span className="script-turn">{m.trigger ? triggerLabel(m.trigger, phase).toUpperCase() : 'MECHANIC'}</span>
                         <EventIcon kind="mechanic" size={12} /><b>{m.name}</b>{m.castTime !== undefined && <span className="script-cast">{castLabel(m)} cast</span>}
                       </div>
+                      {(m.targets ?? []).length > 0 && (
+                        <p className="script-targets">Targets: {(m.targets ?? []).map(id => phase.entities.find(e => e.id === id)?.name).filter(Boolean).join(', ')}</p>
+                      )}
                       {li === line && page && page.blocks.length > 0 && (
                         <div className="script-mechanic-blocks">
                           {page.blocks.map(b => b.type === 'text'

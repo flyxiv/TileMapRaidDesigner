@@ -671,7 +671,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           </section>
           <div className="details-panel">
           {activeTarget !== 'base' && view === 'timeline' && (
-            <div className="target-note">Editing the map of <b>{phase.conversations.find(c => c.id === activeTarget)?.title || 'a conversation'}</b></div>
+            <div className="target-note">{mechOf(activeTarget)
+              ? <>Editing <b>{phase.entities.find(e => e.id === mechOf(activeTarget))?.name || 'a telegraph'}</b> on its own map</>
+              : <>Editing the map of <b>{phase.conversations.find(c => c.id === activeTarget)?.title || 'a conversation'}</b></>}</div>
           )}
           <Inspector
             plan={plan} phase={targetPhase} prevPhase={prevPhase} entity={selected}

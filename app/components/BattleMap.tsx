@@ -161,6 +161,11 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
 
         {units.map(u => <UnitToken key={u.id} u={u} C={C} />)}
 
+        {showTelegraphs && mechanics.flatMap(m => (m.targets ?? []).flatMap(id => {
+          const u = units.find(x => x.id === id);
+          return u ? [<TargetMark key={`${m.id}-${id}`} u={u} C={C} tone={mechanicTone(m)} />] : [];
+        }))}
+
         {transform && selected && <TransformBox e={selected} entities={phase.entities} C={C} />}
 
         {stage && <StageMarker stage={stage} C={C} />}
@@ -373,6 +378,18 @@ function StageMarker({ stage, C }: { stage: { step: ActionStep; from: Entity; te
         <rect width={w} height={20} rx={10} fill="rgba(15,19,20,0.92)" stroke={STAGE} />
         <text x={w / 2} y={10.5} textAnchor="middle" dominantBaseline="central" fontSize="10.5" fontStyle="italic" fontWeight="600" fill={STAGE}>{text}</text>
       </g>
+    </g>
+  );
+}
+
+/** A reticle around a unit a telegraph targets. */
+function TargetMark({ u, C, tone }: { u: Entity; C: number; tone: string }) {
+  const [cx, cy] = center(u).map(v => v * C);
+  const r = (footprint(u) * C) / 2 + 4, t = Math.max(3, C * 0.18);
+  return (
+    <g pointerEvents="none" className="target-mark">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={tone} strokeWidth="1.8" strokeDasharray="4 3" />
+      <path d={`M${cx} ${cy - r - t} V${cy - r + t} M${cx} ${cy + r - t} V${cy + r + t} M${cx - r - t} ${cy} H${cx - r + t} M${cx + r - t} ${cy} H${cx + r + t}`} stroke={tone} strokeWidth="2" strokeLinecap="round" />
     </g>
   );
 }

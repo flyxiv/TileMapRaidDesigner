@@ -2,6 +2,7 @@
 import { Trash2 } from 'lucide-react';
 import { MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { CastTimeField } from './CastTimeField';
+import { TargetsField } from './TargetsField';
 import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
 
@@ -168,6 +169,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
     {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
     {show.soak && <Slider label="Players needed" value={m.soak ?? 1} unit={(m.soak ?? 1) === 1 ? 'player' : 'players'} min={1} max={8} step={1} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
     {m.kind !== 'marker' && <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />}
+    <TargetsField phase={phase} value={m.targets} onChange={v => onChange({ targets: v })} />
     {show.angle && <Slider label="Spread" value={m.angle ?? 90} unit="°" min={15} max={360} step={15} onChange={v => onChange({ angle: v }, `angle-${m.id}`)} />}
     {show.facing && !(anchor && m.followFacing) && (
       <label className="field">

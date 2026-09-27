@@ -58,6 +58,8 @@ export type Entity = {
   infinite?: boolean;
   /** Telegraphs only, optional: seconds from the telegraph appearing to it going off. */
   castTime?: number;
+  /** Telegraphs only, optional: the units it targets (by id). */
+  targets?: string[];
   /** Units only: tiles per side, overriding the type's usual size. */
   size?: number;
   /** Cones and lines that start from a unit: aim the way that unit faces instead of their own rotation. */
@@ -173,11 +175,10 @@ export type PresentStep = { conversation: Conversation; step: ConversationStep; 
 export const presentSteps = (phase: Phase): PresentStep[] => timelineOf(phase).flatMap((item): PresentStep[] =>
   item.kind === 'conversation' ? item.conversation.lines.map(step => ({ conversation: item.conversation, step })) : [{ mechanic: item.mechanic }]);
 export const createPage = (title: string, kind: MechanicKind = 'circle'): MechanicPage => ({ id: uid('page'), title, kind, blocks: [textBlock()] });
-/** A page's telegraph shape: its own, else the shape of a telegraph already linked to it, else a circle. */
+/** The shape a page's new telegraphs take: that of a telegraph already linked to it, else the page's saved shape, else a circle. */
 export function pageKind(plan: Plan, page: MechanicPage): MechanicKind {
-  if (page.kind) return page.kind;
   for (const phase of plan.phases) for (const e of phase.entities) if (e.page === page.id && isMechanic(e.kind)) return e.kind;
-  return 'circle';
+  return page.kind ?? 'circle';
 }
 
 const compassNames = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
@@ -502,7 +503,7 @@ export function validatePlan(value: unknown): value is Plan {
       (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
-      num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
+      num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
       (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&

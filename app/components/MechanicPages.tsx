@@ -60,16 +60,6 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
         <article className="page-editor">
           <div className="eyebrow"><BookOpen size={11} /> Mechanic page</div>
           <input aria-label="Page title" className="page-title" value={page.title} maxLength={120} placeholder="Mechanic name" onChange={e => onChange(page.id, { title: e.target.value }, `page-title-${page.id}`)} />
-          <label className="field page-shape">
-            <span>Shape on the map</span>
-            <div className="page-shape-row">
-              <span className="page-use-icon" style={{ background: mechanicTone({ kind: pageKind(plan, page) }) }}><Glyph kind={pageKind(plan, page)} size={13} color="#141819" strokeWidth={2.2} /></span>
-              <select value={pageKind(plan, page)} onChange={e => onChange(page.id, { kind: e.target.value as MechanicKind })}>
-                {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => <option key={k} value={k}>{mechanicTypes[k].name} · {mechanicTypes[k].description}</option>)}
-              </select>
-            </div>
-            <small className="hint">Used when you place this mechanic from the Timeline's New mechanic menu.</small>
-          </label>
           <section className="page-blocks" aria-label="Page">
             <div className="section-title">Components <span className="plain">Text and maps, top to bottom</span></div>
             {page.blocks.map((b, i, all) => {
