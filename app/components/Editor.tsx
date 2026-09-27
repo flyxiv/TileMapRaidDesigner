@@ -4,19 +4,19 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, markerTypes, type MarkerKind, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
-import { Glyph, Logo, MarkerIcon, WaymarkIcon } from './glyphs';
+import { Glyph, Logo, WaymarkIcon } from './glyphs';
 import { Inspector } from './Inspector';
 import { PresentView } from './PresentView';
 import { MapSizeDialog } from './MapSizeDialog';
 import { MechanicPages } from './MechanicPages';
 import { SaveToPageMenu, StoryPanel } from './StoryPanel';
 
-type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind } | { type: 'marker'; marker: MarkerKind } | { type: 'waymark'; key: WaymarkKey };
+type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind } | { type: 'waymark'; key: WaymarkKey };
 type History = { past: Plan[]; present: Plan; future: Plan[] };
 type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize' | 'waymark'; waymark?: WaymarkKey; id?: string; offset?: [number, number]; corner?: TransformHandle };
 /**
@@ -417,18 +417,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     if (tile && dragItem.type === 'terrain' && !mechOf(t)) { setActiveTarget(t); commit(pl => paintOn(pl, t, brushTiles(...tile), dragItem.terrain), `drag-paint-${t}`); }
   };
   const dropOn = (tile: [number, number], t: Target) => {
-    if (dragItem?.type === 'marker') markUnit(tile, t, dragItem.marker);
-    else if (dragItem?.type === 'waymark') { const k = dragItem.key; commit(pl => updatePhase(pl, pi, f => setWaymark(f, k, tile))); setActiveTarget(t); setSelectedId(waymarkId(k)); }
+    if (dragItem?.type === 'waymark') { const k = dragItem.key; commit(pl => updatePhase(pl, pi, f => setWaymark(f, k, tile))); setActiveTarget(t); setSelectedId(waymarkId(k)); }
     else if (dragItem && dragItem.type !== 'terrain') spawn(dragItem, tile, undefined, t);
     setDragItem(null);
-  };
-  /** Puts a head marker on the unit at a tile (on that map's own units). */
-  const markUnit = (tile: [number, number], t: Target, marker: MarkerKind) => {
-    if (mechOf(t)) { notify('Mark units on the starting map or a conversation map'); return; }
-    const unit = entityAt({ ...phaseFor(t), entities: phaseFor(t).entities.filter(e => isUnit(e.kind)) }, ...tile);
-    if (!unit) { notify('Drop a marker onto a unit'); return; }
-    patchEntity(unit.id, { marker }, undefined, t);
-    setActiveTarget(t); setSelectedId(unit.id);
   };
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
   const addPhase = () => {
@@ -640,17 +631,6 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                   </div>
                 </div>
               ))}
-            </section>
-            <section>
-              <div className="section-title">Markers <span>Drag onto a unit</span></div>
-              <div className="grid-4">
-                {(Object.keys(markerTypes) as MarkerKind[]).map(k => (
-                  <button key={k} type="button" className="tool-tile marker-tile" title={`Drag onto a unit to mark it with ${markerTypes[k].name}`} aria-label={`Marker: ${markerTypes[k].name}`}
-                    onClick={() => notify('Drag it onto a unit to mark it')} {...dragProps({ type: 'marker', marker: k })}>
-                    <MarkerIcon kind={k} size={20} />
-                  </button>
-                ))}
-              </div>
             </section>
             <section>
               <div className="section-title">Waymarks <span>Drag onto the floor</span></div>
