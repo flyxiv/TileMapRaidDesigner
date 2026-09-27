@@ -126,9 +126,11 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
             fill="rgba(198,235,149,0.12)" stroke={tones.safe} strokeWidth="1.5" pointerEvents="none" />
         )}
 
+        {/* Labels sit under the tokens and stay translucent so they never hide a unit. */}
+        {showTelegraphs && C >= 22 && mechanics.map(m => <MechanicChip key={m.id} m={m} entities={phase.entities} C={C} selected={selectedId === m.id} />)}
+
         {units.map(u => <UnitToken key={u.id} u={u} C={C} selected={selectedId === u.id} />)}
 
-        {showTelegraphs && C >= 22 && mechanics.map(m => <MechanicChip key={m.id} m={m} entities={phase.entities} C={C} />)}
       </g>
     </svg>
   );
@@ -154,7 +156,7 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
   </>;
 }
 
-function MechanicChip({ m, entities, C }: { m: Entity; entities: Entity[]; C: number }) {
+function MechanicChip({ m, entities, C, selected }: { m: Entity; entities: Entity[]; C: number; selected: boolean }) {
   const { point: [ox, oy] } = mechanicOrigin(m, entities);
   const a = (m.rotation * Math.PI) / 180;
   const x = (m.kind === 'cone' ? ox + Math.sin(a) * m.radius * 0.88 : ox) * C;
@@ -162,9 +164,9 @@ function MechanicChip({ m, entities, C }: { m: Entity; entities: Entity[]; C: nu
   const tone = mechanicTone(m), badge = m.kind !== 'marker' && m.turns > 0;
   const w = m.name.length * 5.9 + (badge ? 30 : 16), h = 22;
   return (
-    <g data-entity={m.id} transform={`translate(${x - w / 2} ${y - h / 2})`} style={{ cursor: 'pointer' }}>
+    <g data-entity={m.id} className={`mech-label${selected ? ' selected' : ''}`} transform={`translate(${x - w / 2} ${y - h / 2})`}>
       <title>{m.kind === 'marker' ? m.name : `${m.name}: ${m.turns === 0 ? 'lasts the phase' : `resolves in ${m.turns} turn${m.turns > 1 ? 's' : ''}`}`}</title>
-      <rect width={w} height={h} rx={h / 2} fill="rgba(15,19,20,0.92)" stroke={tone} />
+      <rect width={w} height={h} rx={h / 2} fill="rgba(15,19,20,0.75)" stroke={tone} />
       {badge && <>
         <circle cx={h / 2} cy={h / 2} r={8} fill={tone} />
         <text x={h / 2} y={h / 2 + 0.5} textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight="700" fill="#141819">{m.turns}</text>

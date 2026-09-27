@@ -107,6 +107,8 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .battlemap { margin: auto; flex-shrink: 0; touch-action: none; user-select: none; }
 .tool-terrain .battlemap, .tool-unit .battlemap, .tool-mechanic .battlemap { cursor: crosshair; }
 .tool-erase .battlemap { cursor: not-allowed; }
+.mech-label { opacity: .55; cursor: pointer; transition: opacity .15s; }
+.mech-label:hover, .mech-label.selected { opacity: 1; }
 .map-legend { position: absolute; left: 16px; bottom: 12px; display: flex; gap: 14px; font-size: 10px; color: #7c8a83; pointer-events: none; }
 .map-legend span { display: flex; align-items: center; gap: 6px; }
 .map-legend i { width: 9px; height: 9px; display: inline-block; }
