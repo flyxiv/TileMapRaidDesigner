@@ -1,6 +1,6 @@
 'use client';
-import { ArrowDown, ArrowUp, MessageSquare, PanelTop, Plus, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowDown, ArrowUp, GripVertical, MessageSquare, PanelTop, Plus, Trash2, X } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { createConversation, createLine, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
@@ -21,12 +21,70 @@ export function speakerColor(phase: Phase, speaker: string) {
 }
 
 const swap = <T,>(list: T[], i: number, j: number) => { const next = list.slice(); [next[i], next[j]] = [next[j], next[i]]; return next; };
+/** Moves item `from` so it lands at position `to` among the other items. */
+const moveTo = <T,>(list: T[], from: number, to: number) => { const next = list.slice(); const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; };
+
+/**
+ * Drag-to-reorder for the conversation cards, using pointer events on a handle so it works with mouse, touch and pen.
+ * While dragging, `target` is where the card would land among the other cards (0 = first).
+ */
+function useReorder(count: number, onMove: (from: number, to: number) => void) {
+  const cards = useRef(new Map<number, HTMLElement>());
+  const [drag, setDrag] = useState<{ from: number; target: number } | null>(null);
+  const targetAt = (from: number, y: number) => {
+    let target = 0;
+    for (let i = 0; i < count; i++) {
+      if (i === from) continue;
+      const r = cards.current.get(i)?.getBoundingClientRect();
+      if (r && y > r.top + r.height / 2) target++;
+    }
+    return target;
+  };
+  const handleProps = (index: number) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setDrag({ from: index, target: index });
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+      if (!drag) return;
+      // Scroll the sidebar when dragging near its edges.
+      const scroller = e.currentTarget.closest('.sidebar');
+      if (scroller) {
+        const r = scroller.getBoundingClientRect();
+        if (e.clientY < r.top + 48) scroller.scrollTop -= 12;
+        else if (e.clientY > r.bottom - 48) scroller.scrollTop += 12;
+      }
+      const target = targetAt(drag.from, e.clientY);
+      if (target !== drag.target) setDrag({ ...drag, target });
+    },
+    onPointerUp: () => { if (drag && drag.target !== drag.from) onMove(drag.from, drag.target); setDrag(null); },
+    onPointerCancel: () => setDrag(null),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'ArrowUp' && index > 0) { e.preventDefault(); onMove(index, index - 1); }
+      else if (e.key === 'ArrowDown' && index < count - 1) { e.preventDefault(); onMove(index, index + 1); }
+    },
+  });
+  /** Class for card `index`: the dragged card, or the card the drop line sits against. */
+  const cardClass = (index: number) => {
+    if (!drag) return '';
+    if (index === drag.from) return ' dragging';
+    const others = Array.from({ length: count }, (_, i) => i).filter(i => i !== drag.from);
+    if (drag.target < others.length && others[drag.target] === index) return ' drop-before';
+    if (drag.target === others.length && others[others.length - 1] === index) return ' drop-after';
+    return '';
+  };
+  const cardRef = (index: number) => (el: HTMLElement | null) => { if (el) cards.current.set(index, el); else cards.current.delete(index); };
+  return { handleProps, cardClass, cardRef, dragging: !!drag };
+}
 
 export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange }: Props) {
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
 
   const patchConversation = (id: string, fn: (c: Conversation) => Conversation, key?: string) => onChange(cs => cs.map(c => c.id === id ? fn(c) : c), key);
+  const reorder = useReorder(conversations.length, (from, to) => onChange(cs => moveTo(cs, from, to)));
   const addConversation = () => {
     // A new conversation starts from the previous one's trigger so follow-ups are quick to set up.
     const last = conversations[conversations.length - 1];
@@ -36,16 +94,17 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
   };
 
   return (
-    <div className="story">
+    <div className={`story${reorder.dragging ? ' reordering' : ''}`}>
       <p className="hint">Group lines spoken together into a conversation. A conversation starts when its trigger fires (boss HP, encounter time, or time after a mechanic) and its lines play in order. The line you are editing appears on the map.</p>
       {conversations.map((c, ci) => (
-        <section key={c.id} className="conversation" aria-label={c.title || `Conversation ${ci + 1}`}>
+        <section key={c.id} ref={reorder.cardRef(ci)} className={`conversation${reorder.cardClass(ci)}`} aria-label={c.title || `Conversation ${ci + 1}`}>
           <header className="conversation-head">
+            <button type="button" className="drag-handle" aria-label={`Reorder ${c.title || `conversation ${ci + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...reorder.handleProps(ci)}>
+              <GripVertical size={15} />
+            </button>
             <input aria-label="Conversation title" className="conversation-title" value={c.title} maxLength={120} placeholder={`Conversation ${ci + 1}`}
               onChange={e => patchConversation(c.id, x => ({ ...x, title: e.target.value }), `title-${c.id}`)} />
             <div className="story-tools">
-              <button type="button" className="icon-button" aria-label="Move conversation up" disabled={ci === 0} onClick={() => onChange(cs => swap(cs, ci, ci - 1))}><ArrowUp size={13} /></button>
-              <button type="button" className="icon-button" aria-label="Move conversation down" disabled={ci === conversations.length - 1} onClick={() => onChange(cs => swap(cs, ci, ci + 1))}><ArrowDown size={13} /></button>
               <button type="button" className="icon-button danger" aria-label="Delete conversation"
                 onClick={() => { if (c.lines.every(l => !l.text) || confirm(`Delete "${c.title || `Conversation ${ci + 1}`}" and its ${c.lines.length} line${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
                 <Trash2 size={13} />

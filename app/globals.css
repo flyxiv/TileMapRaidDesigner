@@ -355,3 +355,11 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .script-conversation + .script-conversation { margin-top: 8px; }
 .script-conversation-head { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .script-conversation-head b { font: 600 14px var(--display); }
+.drag-handle { width: 22px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: #6f7c77; cursor: grab; touch-action: none; }
+.drag-handle:hover { color: var(--text); background: #262e2f; filter: none; }
+.reordering, .reordering * { cursor: grabbing !important; user-select: none; }
+.conversation { position: relative; transition: opacity .12s; }
+.conversation.dragging { opacity: .45; box-shadow: 0 0 0 1px var(--accent); }
+.conversation.drop-before::before, .conversation.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px; background: var(--accent); }
+.conversation.drop-before::before { top: -8px; }
+.conversation.drop-after::after { bottom: -8px; }
