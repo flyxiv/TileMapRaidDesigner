@@ -456,3 +456,27 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .script-mechanic-maps figcaption { font-size: 11px; color: var(--text-2); }
 /* Page sections keep their natural height; the page scrolls instead of squashing maps. */
 .page-editor > *, .page-maps > *, .diagram > * { flex-shrink: 0; }
+.conv-main { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; }
+.story.wide { padding: 20px 24px 32px; gap: 16px; }
+.story.wide .conversation { flex-direction: row; align-items: flex-start; gap: 18px; padding: 16px; }
+.story.wide .conv-main { flex: 1 1 320px; }
+.conv-side { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 12px; }
+.story.wide .mechanic-item { max-width: 560px; }
+/* Timeline main screen */
+.timeline-main { flex: 1; min-height: 0; overflow-y: auto; background: var(--bg); }
+.timeline-start { border-color: #3a4b35; background: #1a211b; }
+.timeline-start-title { font: 600 15px var(--display); color: var(--accent); padding-left: 4px; }
+.timeline-map { display: flex; flex-direction: column; gap: 6px; }
+.timeline-map-head { display: flex; align-items: center; gap: 10px; font-size: 10px; color: var(--muted); }
+.timeline-map-head > span { flex: 1; }
+.timeline-map-head b { color: var(--accent); font-weight: 600; }
+.timeline-map-head .save-map { position: relative; }
+.timeline-map-canvas { padding: 8px; border-radius: 8px; background-color: #121718; background-image: radial-gradient(#2c3431 1px, transparent 1px); background-size: 16px 16px; border: 1px solid #262c2d; }
+.timeline-map.active .timeline-map-canvas { border-color: #5d7048; box-shadow: 0 0 0 1px #5d7048; }
+.timeline-main.picking .battlemap { cursor: crosshair; }
+.phases-side { padding: 14px 18px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.phases-side .phase-actions { display: flex; align-items: center; gap: 2px; }
+.phase-list.vertical { flex-direction: column; overflow: visible; }
+.phase-list.vertical .phase-card { min-width: 0; height: auto; gap: 4px; padding: 9px 12px; }
+.target-note { margin: 12px 18px 0; padding: 8px 10px; border-radius: 6px; background: #1f2a1d; color: #aebf9e; font-size: 11px; }
+.target-note b { color: var(--accent); }

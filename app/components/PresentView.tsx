@@ -1,7 +1,7 @@
 'use client';
 import { ArrowRight, ChevronLeft, ChevronRight, Footprints, Hand, RotateCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
+import { conversationScenes, sceneAtStep, diagramPlan, actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, presentSteps, timelineOf, triggerLabel, type ConversationStep, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { Glyph } from './glyphs';
 import { speakerColor } from './StoryPanel';
@@ -53,7 +53,14 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   const current = step && !isAction(step) ? step : undefined;
   const currentConversation = script[line]?.conversation;
   // Actions play as you step: the map shows the scene after every earlier action, and previews the current one.
-  const staged = stagePhase(phase, plan, script.slice(0, line).map(s => s.step).filter((s): s is ConversationStep => !!s).filter(isAction));
+  // Each conversation plays on its own map (or where the previous one left off); a telegraph shows the scene as the
+  // last conversation before it ended.
+  const staged = (() => {
+    const cur = script[line];
+    if (cur?.conversation && cur.step) return sceneAtStep(phase, plan, cur.conversation.id, cur.step.id);
+    const before = script.slice(0, line).reverse().find(s => s.conversation);
+    return before?.conversation ? conversationScenes(phase, plan).get(before.conversation.id)?.end ?? phase : phase;
+  })();
   const mechanicStep = script[line]?.mechanic;
   const stagedPlan = staged === phase ? plan : { ...plan, phases: plan.phases.map((p, i) => i === index ? staged : p) };
   const acting = step && isAction(step) ? step : undefined;

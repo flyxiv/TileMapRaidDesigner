@@ -23,6 +23,10 @@ type Props = {
   onOpenPage: (id: string) => void;
   /** Copy a map into a mechanic page's Maps (`null` makes a new page for it). */
   onSaveDiagram: (pageId: string | null, diagram: Diagram) => void;
+  /** Main-screen layout: each conversation shows `renderMap` beside its script, and `start` heads the timeline. */
+  wide?: boolean;
+  renderMap?: (c: Conversation) => React.ReactNode;
+  start?: React.ReactNode;
   /** Start placing a telegraph for a mechanic page: the next map click puts it there. */
   onNewMechanic: (pageId: string) => void;
   /** The page whose telegraph is waiting to be placed. */
@@ -183,7 +187,7 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onSaveDiagram, onPickTile, pickingFor }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onCreatePage, onOpenPage, onNewMechanic, placingMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, start }: Props) {
   const [mechanicMenu, setMechanicMenu] = useState(false);
   const placingPage = placingMechanic ? plan.pages.find(g => g.id === placingMechanic) : undefined;
   const phase = plan.phases[phaseIndex];
@@ -225,8 +229,9 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
   };
 
   return (
-    <div className={`story${reorder.dragging || lineDrag.dragging ? ' reordering' : ''}`}>
-      <p className="hint">The phase in order: conversations and the telegraphs on the map. Each starts when its trigger fires (boss HP, encounter time, or time after a mechanic). Drag cards to reorder; link telegraphs to mechanic pages to explain them.</p>
+    <div className={`story${wide ? ' wide' : ''}${reorder.dragging || lineDrag.dragging ? ' reordering' : ''}`}>
+      {!wide && <p className="hint">The phase in order: conversations and the telegraphs on the map. Each starts when its trigger fires (boss HP, encounter time, or time after a mechanic). Drag cards to reorder; link telegraphs to mechanic pages to explain them.</p>}
+      {start}
       {items.map((item, ci) => item.kind === 'mechanic' ? (
         <Fragment key={item.id}>
           {zone(ci)}
@@ -238,6 +243,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
         <Fragment key={c.id}>
         {zone(ci)}
         <section ref={reorder.cardRef(ci)} className={`conversation${reorder.cardClass(ci)}`} aria-label={c.title || `Conversation ${conversations.indexOf(c) + 1}`}>
+          <div className="conv-main">
           <header className="conversation-head">
             <button type="button" className="drag-handle" aria-label={`Reorder ${c.title || `conversation ${conversations.indexOf(c) + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...reorder.handleProps(ci)}>
               <GripVertical size={15} />
@@ -252,7 +258,7 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
             </div>
           </header>
           <TriggerFields phase={phase} trigger={c.trigger} onChange={(t, key) => t && patchConversation(c.id, x => ({ ...x, trigger: t }), key && `${key}-${c.id}`)} />
-          <ConversationMap plan={plan} phaseIndex={phaseIndex} conversation={c} caption={c.title || `Conversation ${conversations.indexOf(c) + 1}`} onSave={onSaveDiagram} />
+          {!renderMap && <ConversationMap plan={plan} phaseIndex={phaseIndex} conversation={c} caption={c.title || `Conversation ${conversations.indexOf(c) + 1}`} onSave={onSaveDiagram} />}
           <ol ref={lineDrag.listRef(c.id)} className={`conversation-lines${lineDrag.listClass(c)}`}>
             {c.lines.map((l, li) => {
               const common = {
@@ -286,6 +292,8 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
               onActivate(step.id);
             }}><Plus size={12} /> Add action</button>
           </div>
+          </div>
+          {renderMap && <div className="conv-side">{renderMap(c)}</div>}
         </section>
         </Fragment>
       ))(item.conversation))}
@@ -596,6 +604,28 @@ function ConversationMap({ plan, phaseIndex, conversation, caption, onSave }: { 
         </div>
       </div>
       <div className="conv-map-image"><BattleMap plan={scenePlan} phaseIndex={phaseIndex} cell={cell} coords={false} showMoves={false} /></div>
+    </div>
+  );
+}
+
+/** "Save to page": copy a map into a mechanic page's Maps, or start a new page with it. */
+export function SaveToPageMenu({ plan, onSave }: { plan: Plan; onSave: (pageId: string | null) => void }) {
+  const [menu, setMenu] = useState(false);
+  const save = (pageId: string | null) => { setMenu(false); onSave(pageId); };
+  return (
+    <div className="menu-wrap save-map">
+      <button type="button" className="text-button" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(o => !o)}><BookOpen size={12} /> Save to page</button>
+      {menu && (
+        <div className="menu conv-map-menu" role="menu">
+          {plan.pages.map(g => (
+            <button key={g.id} type="button" role="menuitem" onClick={() => save(g.id)}>
+              <Glyph kind={pageKind(plan, g)} size={14} color={mechanicTone({ kind: pageKind(plan, g) })} /> <span><b>{g.title || 'Untitled page'}</b><small>{(g.diagrams ?? []).length} map{(g.diagrams ?? []).length === 1 ? '' : 's'}</small></span>
+            </button>
+          ))}
+          {plan.pages.length > 0 && <hr />}
+          <button type="button" role="menuitem" onClick={() => save(null)}><Plus size={14} /> <span><b>New mechanic page</b><small>Start a page with this map</small></span></button>
+        </div>
+      )}
     </div>
   );
 }

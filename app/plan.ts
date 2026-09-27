@@ -90,7 +90,12 @@ export const isAction = (s: ConversationStep): s is ActionStep => (s as ActionSt
 export const actionKinds = { motion: 'Motion', face: 'Turn', move: 'Move' };
 export const motionPresets = ['Kneels', 'Bows', 'Points', 'Raises weapon', 'Casts', 'Laughs', 'Staggers', 'Collapses'];
 /** Lines spoken together, starting when the trigger fires. `lines` holds its steps: spoken lines and actions, in order. */
-export type Conversation = { id: string; title: string; trigger: DialogueTrigger; lines: ConversationStep[] };
+export type Conversation = { id: string; title: string; trigger: DialogueTrigger; lines: ConversationStep[]; scene?: Scene };
+/**
+ * A conversation's own map: terrain and units as they stand when it starts. Without one, a conversation starts from
+ * where the previous one left off. Telegraphs are not part of a scene; they belong to the phase and show on every map.
+ */
+export type Scene = { terrain: Terrain[][]; units: Entity[] };
 export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: 'After mechanic' };
 /** `timeline` orders the phase's conversations and telegraphs (by id); anything missing from it follows at the end. */
 export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[]; timeline?: string[] };
@@ -191,6 +196,41 @@ export function stagePhase(phase: Phase, plan: Plan, actions: ActionStep[]): Pha
   return entities === phase.entities ? phase : { ...phase, entities };
 }
 export const lineCount = (phase: Phase) => presentSteps(phase).length;
+
+/** A phase with a scene's terrain and units in place of its own; the phase's telegraphs stay. */
+export function withScene(phase: Phase, scene: Scene): Phase {
+  return { ...phase, terrain: scene.terrain, entities: [...scene.units, ...phase.entities.filter(e => isMechanic(e.kind))] };
+}
+/** The scene a phase shows: its terrain and units, copied so it can be edited on its own. */
+export const sceneOf = (phase: Phase): Scene => ({ terrain: phase.terrain.map(r => r.slice()), units: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })) });
+
+/**
+ * The map at the start and end of each conversation, in timeline order. A conversation starts from its own scene when
+ * it has one, else from where the previous conversation ended (the phase's starting map for the first); it ends after
+ * its own actions play.
+ */
+export function conversationScenes(phase: Phase, plan: Plan) {
+  const scenes = new Map<string, { start: Phase; end: Phase }>();
+  let current = phase;
+  for (const item of timelineOf(phase)) {
+    if (item.kind !== 'conversation') continue;
+    const c = item.conversation;
+    const start = c.scene ? withScene(phase, c.scene) : current;
+    const end = stagePhase(start, plan, c.lines.filter(isAction));
+    scenes.set(c.id, { start, end });
+    current = end;
+  }
+  return scenes;
+}
+
+/** The map at a step of a conversation: its start, with the conversation's earlier actions played. */
+export function sceneAtStep(phase: Phase, plan: Plan, conversationId: string, stepId: string | null) {
+  const c = phase.conversations.find(x => x.id === conversationId);
+  const start = conversationScenes(phase, plan).get(conversationId)?.start ?? phase;
+  if (!c) return start;
+  const index = stepId ? c.lines.findIndex(l => l.id === stepId) : 0;
+  return stagePhase(start, plan, c.lines.slice(0, Math.max(0, index)).filter(isAction));
+}
 
 export const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 /** The enemy a boss HP trigger watches: its target, else the phase's first boss, mini-boss or add. */
@@ -430,6 +470,7 @@ export function validatePlan(value: unknown): value is Plan {
       validScene(f.terrain, f.entities, p.cols, p.rows) &&
       Array.isArray(f.conversations) && f.conversations.length <= 100 && new Set(f.conversations.map(c => c?.id)).size === f.conversations.length &&
       f.conversations.every(c => c && typeof c.id === 'string' && typeof c.title === 'string' && c.title.length <= 120 && validTrigger(c.trigger) &&
+        (c.scene === undefined || (!!c.scene && validScene(c.scene.terrain, c.scene.units, p.cols, p.rows) && c.scene.units.every(u => isUnit(u.kind)))) &&
         Array.isArray(c.lines) && c.lines.length <= 200 && new Set(c.lines.map(l => l?.id)).size === c.lines.length &&
       c.lines.every(l => l && typeof l.id === 'string' && (isAction(l) ? validAction(l) : typeof l.speaker === 'string' && l.speaker.length <= 60 &&
         typeof l.text === 'string' && l.text.length <= 2000 && Array.isArray(l.options) && l.options.length <= 6 &&
@@ -452,8 +493,13 @@ export function resizePlan(plan: Plan, cols: number, rows: number, anchor: [numb
       ...p,
       terrain: Array.from({ length: rows }, (_, y) => Array.from({ length: cols }, (_, x) => p.terrain[y - dy]?.[x - dx] ?? fill)),
       entities: p.entities.map(e => clampEntity({ ...e, x: e.x + dx, y: e.y + dy }, next)),
-      // Move destinations shift with the map and stay inside it.
-      conversations: p.conversations.map(c => ({ ...c, lines: c.lines.map(l => isAction(l) && l.action.kind === 'move'
+      // Conversation maps and move destinations shift with the map and stay inside it.
+      conversations: p.conversations.map(c => ({ ...c,
+        ...(c.scene ? { scene: {
+          terrain: Array.from({ length: rows }, (_, y) => Array.from({ length: cols }, (_, x) => c.scene!.terrain[y - dy]?.[x - dx] ?? fill)),
+          units: c.scene.units.map(e => clampEntity({ ...e, x: e.x + dx, y: e.y + dy }, next)),
+        } } : {}),
+        lines: c.lines.map(l => isAction(l) && l.action.kind === 'move'
         ? { ...l, action: { ...l.action, x: Math.max(0, Math.min(cols - 1, l.action.x + dx)), y: Math.max(0, Math.min(rows - 1, l.action.y + dy)) } } : l) })),
     })),
   };
