@@ -1,5 +1,5 @@
 'use client';
-import { forwardRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { forwardRef, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { center, colLabel, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
@@ -20,6 +20,9 @@ type Props = {
   speech?: Speech | null;
   onPointer?: (p: MapPointer) => void;
   onLeave?: () => void;
+  /** Drag-and-drop from outside the map: the tile under the cursor while dragging (null when it leaves), and the drop tile. */
+  onDragTile?: (tile: [number, number] | null) => void;
+  onDropTile?: (tile: [number, number]) => void;
   className?: string;
 };
 
@@ -28,7 +31,7 @@ const terrainFill: Record<string, string> = {
 };
 
 export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
-  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, onPointer, onLeave, className }, ref,
+  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, onPointer, onLeave, onDragTile, onDropTile, className }, ref,
 ) {
   const phase = plan.phases[phaseIndex];
   const prev = phaseIndex > 0 ? plan.phases[phaseIndex - 1] : null;
@@ -38,7 +41,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   const mechanics = phase.entities.filter(e => isMechanic(e.kind));
   const hazards = mechanics.map(m => ({ m, tiles: hazardTiles(m, phase, plan) }));
 
-  const toTile = (e: ReactPointerEvent<SVGSVGElement>): [number, number] | null => {
+  const toTile = (e: ReactMouseEvent<SVGSVGElement>): [number, number] | null => {
     const svg = e.currentTarget, ctm = svg.getScreenCTM();
     if (!ctm) return null;
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
@@ -68,6 +71,9 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
       ref={ref} className={className} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img"
       aria-label={`${plan.name}, phase ${phaseIndex + 1}: ${phase.name}`}
       onPointerDown={handle('down')} onPointerMove={handle('move')} onPointerUp={handle('up')} onPointerLeave={onLeave}
+      onDragOver={onDropTile && ((e: ReactDragEvent<SVGSVGElement>) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; onDragTile?.(toTile(e)); })}
+      onDragLeave={onDragTile && (() => onDragTile(null))}
+      onDrop={onDropTile && ((e: ReactDragEvent<SVGSVGElement>) => { e.preventDefault(); const t = toTile(e); onDragTile?.(null); if (t) onDropTile(t); })}
       fontFamily="'DM Sans', system-ui, sans-serif" overflow="visible"
     >
       <defs>

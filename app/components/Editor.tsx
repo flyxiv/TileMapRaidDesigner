@@ -171,23 +171,31 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         gesture.current = { base: presentRef.current, mode: 'paint' };
         preview(pl => paint(pl, pi, paintAll, brushTiles(...tile), tool.terrain));
         break;
-      case 'unit': {
-        if (!tile) break;
-        const kind = tool.kind, { code, name } = nextCode(phase, kind);
-        const e = clampEntity({ id: uid(kind), kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0, turns: 0 }, plan);
-        commit(pl => updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, e] })));
-        setSelectedId(e.id);
-        break;
-      }
-      case 'mechanic': {
-        if (!tile) break;
-        const e = createMechanic(tool.kind, tile[0], tile[1]);
-        commit(pl => updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, e] })));
-        setSelectedId(e.id);
-        break;
-      }
+      default:
+        if (tile) spawn(tool, tile);
     }
   };
+
+  /** Adds a unit or telegraph at a tile, or paints one brush of terrain, as one undo step. */
+  const spawn = (item: Tool, tile: [number, number]) => {
+    if (item.type === 'terrain') { commit(pl => paint(pl, pi, paintAll, brushTiles(...tile), item.terrain)); return; }
+    let e: Entity;
+    if (item.type === 'unit') {
+      const { code, name } = nextCode(phase, item.kind);
+      e = clampEntity({ id: uid(item.kind), kind: item.kind, name, code, x: tile[0], y: tile[1], radius: 1, rotation: 0, turns: 0 }, plan);
+    } else if (item.type === 'mechanic') e = createMechanic(item.kind, tile[0], tile[1]);
+    else return;
+    commit(pl => updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, e] })));
+    setSelectedId(e.id);
+  };
+
+  // Toolbox items can also be dragged straight onto the map.
+  const [dragItem, setDragItem] = useState<Tool | null>(null);
+  const dragProps = (item: Tool) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', item.type); setDragItem(item); },
+    onDragEnd: () => { setDragItem(null); setHover(null); },
+  });
 
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
   const addPhase = () => {
@@ -269,8 +277,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const cell = Math.round(BASE_CELL * zoom);
   const toolLabel = tool.type === 'select' ? 'Select' : tool.type === 'erase' ? 'Erase'
     : tool.type === 'terrain' ? `Paint ${terrainTypes[tool.terrain].name}` : tool.type === 'unit' ? `Place ${unitTypes[tool.kind].name}` : `Draw ${mechanicTypes[tool.kind].name}`;
-  const highlight = hover && tool.type === 'terrain' ? (() => { const o = Math.floor((brush - 1) / 2); return { x: hover[0] - o, y: hover[1] - o, size: brush }; })()
-    : hover && (tool.type === 'unit' || tool.type === 'mechanic') ? { x: Math.min(hover[0], plan.cols - footprint(tool)), y: Math.min(hover[1], plan.rows - footprint(tool)), size: footprint(tool) } : null;
+  const placing = dragItem ?? tool;
+  const highlight = hover && placing.type === 'terrain' ? (() => { const o = Math.floor((brush - 1) / 2); return { x: hover[0] - o, y: hover[1] - o, size: brush }; })()
+    : hover && (placing.type === 'unit' || placing.type === 'mechanic') ? { x: Math.min(hover[0], plan.cols - footprint(placing)), y: Math.min(hover[1], plan.rows - footprint(placing)), size: footprint(placing) } : null;
   const units = phase.entities.filter(e => isUnit(e.kind));
   const moveCount = prevPhase ? units.filter(u => { const b = prevPhase.entities.find(e => e.id === u.id); return b && (b.x !== u.x || b.y !== u.y); }).length : 0;
   // While the Story tab is open, the line being edited shows as a bubble over its speaker.
@@ -312,23 +321,23 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           </div>
           <div className="tool-sections">
             <section>
-              <div className="section-title">Terrain <span>Paint · T</span></div>
+              <div className="section-title">Terrain <span>Drag or paint · T</span></div>
               <div className="grid-3">
                 {(Object.keys(terrainTypes) as Terrain[]).map(t => (
-                  <button key={t} type="button" className={`tool-tile${isTool({ type: 'terrain', terrain: t }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'terrain', terrain: t })} onClick={() => setTool({ type: 'terrain', terrain: t })}>
+                  <button key={t} type="button" className={`tool-tile${isTool({ type: 'terrain', terrain: t }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'terrain', terrain: t })} onClick={() => setTool({ type: 'terrain', terrain: t })} {...dragProps({ type: 'terrain', terrain: t })}>
                     <span className={`swatch ${t}`} />{terrainTypes[t].name}
                   </button>
                 ))}
               </div>
             </section>
             <section>
-              <div className="section-title">Units <span>Place · U</span></div>
+              <div className="section-title">Units <span>Drag or place · U</span></div>
               {(Object.keys(unitCategories) as (keyof typeof unitCategories)[]).map(cat => (
                 <div key={cat} className="unit-group" role="group" aria-label={unitCategories[cat].name}>
                   <div className="unit-group-title">{unitCategories[cat].name}</div>
                   <div className="grid-3">
                     {unitsIn(cat).map(k => (
-                      <button key={k} type="button" className={`tool-tile unit${isTool({ type: 'unit', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'unit', kind: k })} onClick={() => setTool({ type: 'unit', kind: k })}>
+                      <button key={k} type="button" className={`tool-tile unit${isTool({ type: 'unit', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'unit', kind: k })} onClick={() => setTool({ type: 'unit', kind: k })} {...dragProps({ type: 'unit', kind: k })}>
                         <span className="unit-dot" style={{ borderColor: unitTypes[k].color }}><Glyph kind={k} size={13} color={unitTypes[k].color} strokeWidth={2.2} /></span>{unitTypes[k].name}
                       </button>
                     ))}
@@ -337,10 +346,10 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               ))}
             </section>
             <section>
-              <div className="section-title">Mechanics <span>Draw · M</span></div>
+              <div className="section-title">Mechanics <span>Drag or place · M</span></div>
               <div className="grid-3">
                 {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => (
-                  <button key={k} type="button" className={`tool-tile tall${isTool({ type: 'mechanic', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'mechanic', kind: k })} title={mechanicTypes[k].description} onClick={() => setTool({ type: 'mechanic', kind: k })}>
+                  <button key={k} type="button" className={`tool-tile tall${isTool({ type: 'mechanic', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'mechanic', kind: k })} title={mechanicTypes[k].description} onClick={() => setTool({ type: 'mechanic', kind: k })} {...dragProps({ type: 'mechanic', kind: k })}>
                     <Glyph kind={k} size={22} color={mechanicTone({ kind: k, turns: 2 })} strokeWidth={1.8} />{mechanicTypes[k].name}
                   </button>
                 ))}
@@ -398,6 +407,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={selectedId}
                 showMoves={layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
                 highlight={highlight} speech={speech} onPointer={onPointer} onLeave={() => setHover(null)}
+                onDragTile={t => dragItem && setHover(t)} onDropTile={t => { if (dragItem) spawn(dragItem, t); setDragItem(null); }}
               />
             </div>
             <div className="map-legend">
@@ -429,7 +439,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
           <div className="canvas-status">
             <span>{units.length} units · {phase.entities.length - units.length} telegraphs{prevPhase ? ` · ${moveCount} moved since phase ${pi}` : ''}</span>
-            <span>Drag a token to move it · Arrow keys nudge · [ and ] switch phases</span>
+            <span>Drag from the toolbox to place · Drag a token to move it · Arrow keys nudge</span>
           </div>
         </main>
 
