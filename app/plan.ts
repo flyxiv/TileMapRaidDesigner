@@ -25,7 +25,11 @@ export type MechanicKind = keyof typeof mechanicTypes;
 export type Kind = UnitKind | MechanicKind;
 /** Units occupy tiles; mechanics are telegraphs. `turns` is the countdown until a mechanic resolves (0 = lasts the whole phase). */
 export type Entity = { id: string; kind: Kind; name: string; code: string; x: number; y: number; radius: number; rotation: number; turns: number; anchor?: string };
-export type Phase = { id: string; name: string; notes: string; turns: number; terrain: Terrain[][]; entities: Entity[] };
+/** A choice offered on a dialogue line. `goto` names the phase the fight jumps to when it is picked. */
+export type DialogueOption = { id: string; text: string; outcome: string; goto?: string };
+/** A line of mid-fight dialogue, spoken on a turn counted from the start of its phase (1 = first turn). */
+export type DialogueLine = { id: string; turn: number; speaker: string; text: string; options: DialogueOption[] };
+export type Phase = { id: string; name: string; notes: string; turns: number; terrain: Terrain[][]; entities: Entity[]; dialogue: DialogueLine[] };
 export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[] };
 
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
@@ -46,6 +50,9 @@ export function phaseTurnRanges(plan: Plan) {
   let start = 1;
   return plan.phases.map(p => { const range = { start, end: start + p.turns - 1 }; start += p.turns; return range; });
 }
+export const createLine = (turn: number, speaker: string): DialogueLine => ({ id: uid('line'), turn, speaker, text: '', options: [] });
+export const createOption = (): DialogueOption => ({ id: uid('opt'), text: '', outcome: '' });
+
 export const turnRangeText = ({ start, end }: { start: number; end: number }) => start === end ? `Turn ${start}` : `Turns ${start}–${end}`;
 
 /** Center of an entity in tile units (tile edges are integers). */
@@ -134,31 +141,40 @@ export function createPlan(): Plan {
         ...roster({ boss: [9, 3], mt: [9, 6], ot: [11, 6], h1: [6, 11], h2: [13, 11], d1: [7, 8], d2: [12, 8], d3: [8, 10], d4: [11, 10] }),
         mech('cleave', 'cone', 'Frontal cleave', 9, 3, 4, 180, 2, 'boss'),
         mech('impact', 'circle', 'Obsidian impact', 13, 8, 1.6, 0, 3),
-      ] },
+      ],
+      dialogue: [{ id: 'line-wake', turn: 1, speaker: 'Obsidian Sentinel', text: 'Who dares wake the Sanctum?', options: [] }] },
     { id: 'shatter', name: 'Shattered ground', turns: 3, terrain: scorched,
       notes: 'Spread out for the impact. Move to the outer tiles and keep the center clear.',
       entities: [
         ...roster({ boss: [9, 3], mt: [9, 6], ot: [11, 6], h1: [4, 11], h2: [15, 11], d1: [4, 7], d2: [15, 7], d3: [7, 12], d4: [12, 12] }),
         mech('shatter-1', 'circle', 'Shatter', 9, 8, 2.6, 0, 1),
         mech('debris', 'circle', 'Falling debris', 6, 3, 1.6, 0, 2),
-      ] },
+      ],
+      dialogue: [] },
     { id: 'stand', name: 'The final stand', turns: 3, terrain: baseTerrain(cols, rows),
       notes: 'Regroup at the center. Use defensive cooldowns and finish the Sentinel.',
       entities: [
         ...roster({ boss: [9, 5], mt: [9, 7], ot: [11, 7], h1: [8, 11], h2: [11, 11], d1: [9, 10], d2: [10, 10], d3: [9, 11], d4: [10, 11] }),
         mech('cleave-2', 'cone', 'Frontal cleave', 9, 5, 3, 180, 1, 'boss'),
         mech('stack', 'marker', 'Stack point', 9, 10, 1.6, 0, 0),
-      ] },
+      ],
+      dialogue: [{ id: 'line-offer', turn: 1, speaker: 'Obsidian Sentinel', text: 'Kneel, and I will let the rest of you leave.', options: [
+        { id: 'opt-refuse', text: 'Refuse', outcome: 'The Sentinel enrages. Finish it before the stack point collapses.' },
+        { id: 'opt-kneel', text: 'Kneel', outcome: 'The Sentinel strikes the kneeling player. Healers spot-heal them next turn.' },
+      ] }] },
   ] };
 }
 
 /** Upgrades a version 1 plan (shared terrain, no countdowns) to the current shape. */
 export function migratePlan(value: unknown): unknown {
-  const p = value as { version?: number; terrain?: unknown; phases?: { entities?: Record<string, unknown>[] }[] };
-  if (!p || typeof p !== 'object' || p.version !== 1 || !Array.isArray(p.phases)) return value;
+  const p = value as { version?: number; terrain?: unknown; phases?: { entities?: Record<string, unknown>[]; dialogue?: unknown }[] };
+  if (!p || typeof p !== 'object' || !Array.isArray(p.phases)) return value;
+  // Plans saved before dialogue existed have no script yet.
+  if (p.version === 2) return p.phases.every(f => f && Array.isArray(f.dialogue)) ? value : { ...p, phases: p.phases.map(f => f && !Array.isArray(f.dialogue) ? { ...f, dialogue: [] } : f) };
+  if (p.version !== 1) return value;
   return {
     ...p, version: 2, terrain: undefined,
-    phases: p.phases.map(f => ({ ...f, turns: 1, terrain: p.terrain, entities: Array.isArray(f.entities) ? f.entities.map(e => ({ code: '', turns: e.kind === 'marker' ? 0 : 2, ...e })) : f.entities })),
+    phases: p.phases.map(f => ({ ...f, turns: 1, terrain: p.terrain, dialogue: [], entities: Array.isArray(f.entities) ? f.entities.map(e => ({ code: '', turns: e.kind === 'marker' ? 0 : 2, ...e })) : f.entities })),
   };
 }
 
@@ -175,5 +191,10 @@ export function validatePlan(value: unknown): value is Plan {
         (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
         int(e.x, 0, p.cols - footprint(e)) && int(e.y, 0, p.rows - footprint(e)) &&
         Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 && int(e.turns, 0, 9) &&
-        (e.anchor === undefined || typeof e.anchor === 'string')));
+        (e.anchor === undefined || typeof e.anchor === 'string')) &&
+      Array.isArray(f.dialogue) && f.dialogue.length <= 200 && new Set(f.dialogue.map(l => l?.id)).size === f.dialogue.length &&
+      f.dialogue.every(l => l && typeof l.id === 'string' && int(l.turn, 1, 20) && typeof l.speaker === 'string' && l.speaker.length <= 60 &&
+        typeof l.text === 'string' && l.text.length <= 2000 && Array.isArray(l.options) && l.options.length <= 6 &&
+        l.options.every(o => o && typeof o.id === 'string' && typeof o.text === 'string' && o.text.length <= 200 &&
+          typeof o.outcome === 'string' && o.outcome.length <= 1000 && (o.goto === undefined || typeof o.goto === 'string'))));
 }

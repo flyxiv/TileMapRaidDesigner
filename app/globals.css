@@ -273,3 +273,42 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .segmented button.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .check input:disabled + * , .check:has(input:disabled) { color: var(--dim); cursor: default; }
+
+/* Story: dialogue lines and choices */
+.panel-tabs { display: flex; gap: 20px; padding: 0 18px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.panel-tabs button { height: 44px; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.panel-tabs button[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #2e3830; color: var(--accent); font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
+.details-panel { display: flex; flex-direction: column; flex: 1; }
+.story { padding: 16px 18px 24px; display: flex; flex-direction: column; gap: 12px; }
+.story-line { padding: 12px; border-radius: 8px; background: #1f2526; border: 1px solid #2f3637; border-left: 3px solid var(--speaker); display: flex; flex-direction: column; gap: 8px; }
+.story-line-top { display: flex; align-items: center; gap: 6px; }
+.story-line-top select { height: 30px; padding: 0 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.story-speaker { flex: 1; min-width: 0; height: 30px; padding: 0 8px; font-size: 12px; font-weight: 600; color: var(--speaker) !important; }
+.story-tools { display: flex; }
+.story-tools .icon-button { width: 24px; height: 26px; }
+.story-line textarea { resize: vertical; padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+.story-option { padding: 8px; border-radius: 6px; background: var(--field); border: 1px solid #2c3334; display: flex; flex-direction: column; gap: 6px; }
+.story-option-top { display: flex; align-items: center; gap: 6px; }
+.story-option input, .story-option select { height: 28px; padding: 0 8px; font-size: 11px; min-width: 0; width: 100%; }
+.story-option-top input { flex: 1; font-weight: 600; }
+.story-option .icon-button { width: 24px; height: 26px; flex-shrink: 0; }
+.option-key { width: 20px; height: 20px; flex-shrink: 0; border-radius: 4px; background: #2e3830; color: var(--accent); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.story-line .text-button { align-self: flex-start; }
+.story-add { align-self: flex-start; }
+.phase-lines { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; letter-spacing: 0; color: #9aab8e; }
+.present-story-script { display: flex; flex-direction: column; gap: 12px; }
+.script-line { padding: 12px 14px; border-radius: 8px; background: #161b1c; border: 1px solid var(--line-soft); border-left: 3px solid var(--speaker); display: flex; flex-direction: column; gap: 8px; }
+.script-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.script-meta b { color: var(--speaker); font-weight: 700; }
+.script-turn { font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--muted); padding: 2px 6px; border-radius: 3px; background: #232a2b; }
+.script-line > p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--text); font-style: italic; }
+.script-options { display: flex; flex-direction: column; gap: 6px; }
+.script-options button { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 6px; background: #1e2526; border: 1px solid #343b3a; font-size: 13px; font-weight: 600; text-align: left; }
+.script-options button span { width: 22px; height: 22px; flex-shrink: 0; border-radius: 4px; background: #2e3830; color: var(--accent); font-size: 11px; display: flex; align-items: center; justify-content: center; }
+.script-options button.picked { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.script-outcome { padding: 10px 12px; border-radius: 6px; background: #1c231c; display: flex; flex-direction: column; gap: 8px; }
+.script-outcome p { margin: 0; font-size: 13px; line-height: 1.55; color: #c3d0b8; }
+.script-outcome .text-button { align-self: flex-start; }
+.story-line-bottom { display: flex; align-items: center; justify-content: space-between; }
+.story-line-bottom .story-tools { margin-left: auto; }

@@ -1,5 +1,5 @@
 'use client';
-import { Copy, Download, Eraser, FileJson, Image as ImageIcon, Keyboard, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
+import { Copy, Download, Eraser, FileJson, Image as ImageIcon, Keyboard, MessageSquare, Minus, MousePointer2, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -12,6 +12,7 @@ import { BattleMap, type MapPointer } from './BattleMap';
 import { Glyph, Logo } from './glyphs';
 import { Inspector } from './Inspector';
 import { PresentView } from './PresentView';
+import { StoryPanel } from './StoryPanel';
 
 type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
 type History = { past: Plan[]; present: Plan; future: Plan[] };
@@ -69,6 +70,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [toast, setToast] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
+  const [panel, setPanel] = useState<'details' | 'story'>('details');
   const gesture = useRef<Gesture | null>(null);
   const lastEdit = useRef<{ key: string; at: number } | null>(null);
   const presentRef = useRef(hist.present);
@@ -188,12 +190,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
   const addPhase = () => {
-    const next: Phase = { id: uid('phase'), name: `Phase ${plan.phases.length + 1}`, notes: '', turns: 3, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })) };
+    const next: Phase = { id: uid('phase'), name: `Phase ${plan.phases.length + 1}`, notes: '', turns: 3, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.filter(e => isUnit(e.kind)).map(e => ({ ...e })), dialogue: [] };
     commit(p => ({ ...p, phases: [...p.phases.slice(0, pi + 1), next, ...p.phases.slice(pi + 1)] }));
     setPhaseIndex(pi + 1);
   };
   const duplicatePhase = () => {
-    const copy: Phase = { ...phase, id: uid('phase'), name: `${phase.name} (copy)`, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })) };
+    const copy: Phase = { ...phase, id: uid('phase'), name: `${phase.name} (copy)`, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })), dialogue: phase.dialogue.map(l => ({ ...l, id: uid('line'), options: l.options.map(o => ({ ...o, id: uid('opt') })) })) };
     commit(p => ({ ...p, phases: [...p.phases.slice(0, pi + 1), copy, ...p.phases.slice(pi + 1)] }));
     setPhaseIndex(pi + 1);
   };
@@ -405,7 +407,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <div className="phase-list">
               {plan.phases.map((p, i) => (
                 <button key={p.id} type="button" className={`phase-card${i === pi ? ' active' : ''}`} aria-current={i === pi ? 'step' : undefined} onClick={() => setPhaseIndex(i)}>
-                  <span className="phase-number"><span>Phase {i + 1}</span><span>{ranges[i].start === ranges[i].end ? `T${ranges[i].start}` : `T${ranges[i].start}–${ranges[i].end}`}</span></span>
+                  <span className="phase-number"><span>Phase {i + 1}{p.dialogue.length > 0 && <span className="phase-lines" title={`${p.dialogue.length} dialogue line${p.dialogue.length > 1 ? 's' : ''}`}><MessageSquare size={10} /> {p.dialogue.length}</span>}</span><span>{ranges[i].start === ranges[i].end ? `T${ranges[i].start}` : `T${ranges[i].start}–${ranges[i].end}`}</span></span>
                   <b>{p.name}</b>
                   <span className="ticks">{Array.from({ length: p.turns }, (_, t) => <i key={t} />)}</span>
                 </button>
@@ -420,6 +422,21 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         </main>
 
         <aside className="sidebar right" aria-label="Inspector">
+          <div className="panel-tabs" role="tablist">
+            <button type="button" role="tab" id="tab-details" aria-selected={panel === 'details'} aria-controls="panel-details" onClick={() => setPanel('details')}>Details</button>
+            <button type="button" role="tab" id="tab-story" aria-selected={panel === 'story'} aria-controls="panel-story" onClick={() => setPanel('story')}>
+              Story{phase.dialogue.length > 0 && <span className="tab-count">{phase.dialogue.length}</span>}
+            </button>
+          </div>
+          {panel === 'story' ? (
+            <div id="panel-story" role="tabpanel" aria-labelledby="tab-story">
+              <StoryPanel
+                plan={plan} phaseIndex={pi}
+                defaultSpeaker={(selected && isUnit(selected.kind) ? selected : phase.entities.find(e => e.kind === 'boss'))?.name ?? 'Narrator'}
+                onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, dialogue: fn(f.dialogue) })), key)}
+              />
+            </div>
+          ) : <div id="panel-details" role="tabpanel" aria-labelledby="tab-details" className="details-panel">
           <Inspector
             plan={plan} phase={phase} prevPhase={prevPhase} entity={selected}
             onChange={(patch, key) => selected && patchEntity(selected.id, patch, key)}
@@ -437,6 +454,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <label className="check"><input type="checkbox" checked={layers.telegraphs} onChange={e => setLayers(l => ({ ...l, telegraphs: e.target.checked }))} /> Telegraphs</label>
             <label className="check"><input type="checkbox" checked={layers.moves} onChange={e => setLayers(l => ({ ...l, moves: e.target.checked }))} /> Movement from previous phase</label>
           </div>
+          </div>}
         </aside>
       </div>
 

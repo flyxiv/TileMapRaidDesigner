@@ -1,8 +1,9 @@
 'use client';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isMechanic, mechanicTone, phaseTurnRanges, turnRangeText, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
+import { speakerColor } from './StoryPanel';
 
 function steps(notes: string) {
   const lines = notes.split(/\n+/).map(l => l.trim()).filter(Boolean);
@@ -14,6 +15,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
   const ranges = phaseTurnRanges(plan);
   const stage = useRef<HTMLElement>(null);
   const [cell, setCell] = useState(36);
+  const [chosen, setChosen] = useState<Record<string, string>>({});
 
   useLayoutEffect(() => {
     const el = stage.current;
@@ -50,6 +52,37 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
           <ol className="present-steps">
             {steps(phase.notes).map((s, i) => <li key={i}><span>{i + 1}</span>{s}</li>)}
           </ol>
+          {phase.dialogue.length > 0 && (
+            <div className="present-story-script">
+              <div className="section-title">Story</div>
+              {phase.dialogue.map(l => {
+                const pick = l.options.find(o => o.id === chosen[l.id]);
+                const target = pick?.goto ? plan.phases.findIndex(p => p.id === pick.goto) : -1;
+                return (
+                  <div key={l.id} className="script-line" style={{ '--speaker': speakerColor(phase, l.speaker) } as React.CSSProperties}>
+                    <div className="script-meta"><span className="script-turn">T{ranges[index].start + Math.min(l.turn, phase.turns) - 1}</span><b>{l.speaker || 'Narrator'}</b></div>
+                    {l.text && <p>{l.text}</p>}
+                    {l.options.length > 0 && (
+                      <div className="script-options">
+                        {l.options.map((o, oi) => (
+                          <button key={o.id} type="button" aria-pressed={chosen[l.id] === o.id} className={chosen[l.id] === o.id ? 'picked' : ''}
+                            onClick={() => setChosen(c => ({ ...c, [l.id]: o.id }))}>
+                            <span>{String.fromCharCode(65 + oi)}</span>{o.text || 'Untitled choice'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {pick && (pick.outcome || target >= 0) && (
+                      <div className="script-outcome">
+                        {pick.outcome && <p>{pick.outcome}</p>}
+                        {target >= 0 && <button type="button" className="text-button" onClick={() => onIndex(target)}>Go to phase {target + 1}: {plan.phases[target].name} <ArrowRight size={13} /></button>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {mechanics.length > 0 && (
             <div className="present-watch">
               <div className="section-title">Watch for</div>
