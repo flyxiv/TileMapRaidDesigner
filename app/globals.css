@@ -363,3 +363,14 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .conversation.drop-before::before, .conversation.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px; background: var(--accent); }
 .conversation.drop-before::before { top: -8px; }
 .conversation.drop-after::after { bottom: -8px; }
+.story-line { position: relative; padding-left: 20px; }
+.line-grip { position: absolute; left: 0; top: 0; bottom: 0; width: 16px; display: flex; align-items: center; justify-content: center; color: transparent; cursor: grab; touch-action: none; border-radius: 6px 0 0 6px; }
+.story-line:hover .line-grip { color: var(--speaker); background: rgba(255,255,255,0.04); }
+.line-grip:hover { background: rgba(255,255,255,0.08) !important; }
+.story-line.dragging { opacity: .45; }
+.story-line.drop-before::before, .story-line.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px; background: var(--accent); }
+.story-line.drop-before::before { top: -6px; }
+.story-line.drop-after::after { bottom: -6px; }
+.conversation-lines.drop-into { min-height: 36px; border-radius: 6px; outline: 2px dashed var(--accent); outline-offset: 2px; }
+.new-conversation-zone { height: 34px; border-radius: 8px; border: 1.5px dashed #4a5a44; color: #8ea17a; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.new-conversation-zone.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
