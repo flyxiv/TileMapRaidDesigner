@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { footprint, isMechanic, isUnit, mechanicTone, mechanicTypes, tileLabel, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { footprint, isMechanic, isUnit, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -74,14 +74,18 @@ function UnitFields({ plan, phase, prevPhase, u, onChange }: { plan: Plan; phase
   const before = prevPhase?.entities.find(e => e.id === u.id);
   const moved = before && (before.x !== u.x || before.y !== u.y);
   return <>
-    <Header label="Selected unit" title={u.name} sub={`${type.name}${u.code ? ` · ${u.code}` : ''} · ${tileLabel(u.x, u.y)}`} kind={u.kind} color={type.color} round />
+    <Header label={`Selected ${{ characters: 'character', enemies: 'enemy', neutral: 'neutral unit' }[type.category]}`} title={u.name} sub={`${type.name}${u.code ? ` · ${u.code}` : ''} · ${tileLabel(u.x, u.y)}`} kind={u.kind} color={type.color} round />
     <div className="field-grid">
       <label className="field span-2">Name
         <input value={u.name} maxLength={120} onChange={ev => onChange({ name: ev.target.value }, `name-${u.id}`)} />
       </label>
-      <label className="field">Role
+      <label className="field">Type
         <select value={u.kind} onChange={ev => onChange({ kind: ev.target.value as UnitKind })}>
-          {Object.entries(unitTypes).map(([k, t]) => <option key={k} value={k}>{t.name}</option>)}
+          {(Object.keys(unitCategories) as UnitCategory[]).map(cat => (
+            <optgroup key={cat} label={unitCategories[cat].name}>
+              {unitsIn(cat).map(k => <option key={k} value={k}>{unitTypes[k].name}</option>)}
+            </optgroup>
+          ))}
         </select>
       </label>
       <label className="field">Label

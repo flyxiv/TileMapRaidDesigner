@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  clampEntity, createMechanic, entityAt, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  clampEntity, createMechanic, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -269,7 +269,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const toolLabel = tool.type === 'select' ? 'Select' : tool.type === 'erase' ? 'Erase'
     : tool.type === 'terrain' ? `Paint ${terrainTypes[tool.terrain].name}` : tool.type === 'unit' ? `Place ${unitTypes[tool.kind].name}` : `Draw ${mechanicTypes[tool.kind].name}`;
   const highlight = hover && tool.type === 'terrain' ? (() => { const o = Math.floor((brush - 1) / 2); return { x: hover[0] - o, y: hover[1] - o, size: brush }; })()
-    : hover && (tool.type === 'unit' || tool.type === 'mechanic') ? { x: Math.min(hover[0], plan.cols - (tool.type === 'unit' && tool.kind === 'boss' ? 2 : 1)), y: Math.min(hover[1], plan.rows - (tool.type === 'unit' && tool.kind === 'boss' ? 2 : 1)), size: tool.type === 'unit' && tool.kind === 'boss' ? 2 : 1 } : null;
+    : hover && (tool.type === 'unit' || tool.type === 'mechanic') ? { x: Math.min(hover[0], plan.cols - footprint(tool)), y: Math.min(hover[1], plan.rows - footprint(tool)), size: footprint(tool) } : null;
   const units = phase.entities.filter(e => isUnit(e.kind));
   const moveCount = prevPhase ? units.filter(u => { const b = prevPhase.entities.find(e => e.id === u.id); return b && (b.x !== u.x || b.y !== u.y); }).length : 0;
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
@@ -316,13 +316,18 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             </section>
             <section>
               <div className="section-title">Units <span>Place · U</span></div>
-              <div className="grid-2">
-                {(Object.keys(unitTypes) as UnitKind[]).map(k => (
-                  <button key={k} type="button" className={`tool-unit${isTool({ type: 'unit', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'unit', kind: k })} onClick={() => setTool({ type: 'unit', kind: k })}>
-                    <span className="unit-dot" style={{ borderColor: unitTypes[k].color }}><Glyph kind={k} size={13} color={unitTypes[k].color} strokeWidth={2.2} /></span>{unitTypes[k].name}
-                  </button>
-                ))}
-              </div>
+              {(Object.keys(unitCategories) as (keyof typeof unitCategories)[]).map(cat => (
+                <div key={cat} className="unit-group" role="group" aria-label={unitCategories[cat].name}>
+                  <div className="unit-group-title">{unitCategories[cat].name}</div>
+                  <div className="grid-3">
+                    {unitsIn(cat).map(k => (
+                      <button key={k} type="button" className={`tool-tile unit${isTool({ type: 'unit', kind: k }) ? ' active' : ''}`} aria-pressed={isTool({ type: 'unit', kind: k })} onClick={() => setTool({ type: 'unit', kind: k })}>
+                        <span className="unit-dot" style={{ borderColor: unitTypes[k].color }}><Glyph kind={k} size={13} color={unitTypes[k].color} strokeWidth={2.2} /></span>{unitTypes[k].name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </section>
             <section>
               <div className="section-title">Mechanics <span>Draw · M</span></div>
@@ -389,7 +394,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               />
             </div>
             <div className="map-legend">
-              <span><i className="party" />Party</span><span><i className="enemy" />Enemy</span>
+              <span><i className="party" />Characters</span><span><i className="enemy" />Enemies</span><span><i className="neutral" />Neutral</span>
               <span><i className="tele" />Telegraph</span><span><i className="hot" />Resolves next turn</span>
               <span><i className="move" />Movement</span>
             </div>

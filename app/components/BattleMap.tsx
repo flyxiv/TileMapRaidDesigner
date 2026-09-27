@@ -178,7 +178,7 @@ function MechanicChip({ m, entities, C, selected }: { m: Entity; entities: Entit
 
 function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean }) {
   const type = unitTypes[u.kind as keyof typeof unitTypes];
-  const big = u.kind === 'boss';
+  const big = footprint(u) > 1, heavy = big || u.kind === 'miniboss';
   const [cx, cy] = center(u).map(v => v * C);
   // Tokens fill their whole footprint, inset just enough to keep the tile grid visible.
   const tiny = C < 12, inset = Math.min(2, C * 0.08), size = footprint(u) * C - inset * 2, r = size / 2, rx = Math.max(1, C * (big ? 0.18 : 0.14));
@@ -189,7 +189,7 @@ function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean
       <rect x={cx - r} y={cy - r + 1.5} width={size} height={size} rx={rx} fill="rgba(0,0,0,0.35)" />
       {tiny
         ? <rect x={cx - r} y={cy - r} width={size} height={size} rx={rx} fill={type.color} />
-        : <rect x={cx - r + 1} y={cy - r + 1} width={size - 2} height={size - 2} rx={rx} fill={type.fill} stroke={type.color} strokeWidth={big ? 2.5 : 2} />}
+        : <rect x={cx - r + 1} y={cy - r + 1} width={size - 2} height={size - 2} rx={rx} fill={type.fill} stroke={type.color} strokeWidth={heavy ? 2.5 : 2} />}
       {!tiny && <svg x={cx - icon / 2} y={cy - icon / 2} width={icon} height={icon} viewBox="0 0 24 24" fill="none" stroke={type.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
         <path d={glyphs[u.kind]} />
       </svg>}

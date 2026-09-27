@@ -6,12 +6,23 @@ export const terrainTypes = {
   grass: { name: 'Grass', color: '#495b39', blocks: false },
   void: { name: 'Void', color: '#1c2523', blocks: true },
 };
-export const unitTypes = {
-  tank: { name: 'Tank', color: '#8babeb', fill: '#1a2130', prefix: 'T' },
-  healer: { name: 'Healer', color: '#9acc99', fill: '#1a261c', prefix: 'H' },
-  dps: { name: 'DPS', color: '#c3a0e2', fill: '#241c2d', prefix: 'D' },
-  boss: { name: 'Boss', color: '#e49780', fill: '#2a1c18', prefix: 'B' },
+export const unitCategories = {
+  characters: { name: 'Characters', description: 'The raid party' },
+  enemies: { name: 'Enemies', description: 'Hostile to the party' },
+  neutral: { name: 'Neutral', description: 'Story characters and bystanders' },
 };
+export type UnitCategory = keyof typeof unitCategories;
+/** `size` is the footprint in tiles per side. */
+export const unitTypes: Record<'tank' | 'healer' | 'dps' | 'boss' | 'miniboss' | 'add' | 'npc', { name: string; category: UnitCategory; color: string; fill: string; prefix: string; size: number }> = {
+  tank: { name: 'Tank', category: 'characters', color: '#8babeb', fill: '#1a2130', prefix: 'T', size: 1 },
+  healer: { name: 'Healer', category: 'characters', color: '#9acc99', fill: '#1a261c', prefix: 'H', size: 1 },
+  dps: { name: 'DPS', category: 'characters', color: '#c3a0e2', fill: '#241c2d', prefix: 'D', size: 1 },
+  boss: { name: 'Boss', category: 'enemies', color: '#e49780', fill: '#2a1c18', prefix: 'B', size: 2 },
+  miniboss: { name: 'Mini-boss', category: 'enemies', color: '#ef8fa6', fill: '#2c1a20', prefix: 'MB', size: 1 },
+  add: { name: 'Add', category: 'enemies', color: '#b98a7d', fill: '#241c1a', prefix: 'A', size: 1 },
+  npc: { name: 'NPC', category: 'neutral', color: '#cfd6d3', fill: '#252a2a', prefix: 'N', size: 1 },
+};
+export const unitsIn = (category: UnitCategory) => (Object.keys(unitTypes) as UnitKind[]).filter(k => unitTypes[k].category === category);
 export const mechanicTypes = {
   circle: { name: 'Circle', description: 'Area damage' },
   cone: { name: 'Cone', description: 'Frontal area damage' },
@@ -34,7 +45,7 @@ export type Plan = { version: 2; name: string; cols: number; rows: number; phase
 
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
 export const isMechanic = (kind: Kind): kind is MechanicKind => kind in mechanicTypes;
-export const footprint = (e: Entity) => e.kind === 'boss' ? 2 : 1;
+export const footprint = (e: Pick<Entity, 'kind'>) => isUnit(e.kind) ? unitTypes[e.kind].size : 1;
 export const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 
 export const colLabel = (i: number) => i < 26 ? String.fromCharCode(65 + i) : 'A' + String.fromCharCode(65 + i - 26);

@@ -312,3 +312,8 @@ kbd { font: 600 10px 'DM Sans', sans-serif; border: 1px solid #424a47; border-ra
 .script-outcome .text-button { align-self: flex-start; }
 .story-line-bottom { display: flex; align-items: center; justify-content: space-between; }
 .story-line-bottom .story-tools { margin-left: auto; }
+.unit-group { display: flex; flex-direction: column; gap: 6px; }
+.unit-group + .unit-group { margin-top: 4px; }
+.unit-group-title { font-size: 10px; font-weight: 600; color: #8e9994; }
+.tool-tile.unit { height: 58px; }
+.map-legend .neutral { border-radius: 2px; border: 1.5px solid #cfd6d3; }
