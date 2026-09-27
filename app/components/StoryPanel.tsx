@@ -1,5 +1,5 @@
 'use client';
-import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, Image as ImageIcon, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
 import { BattleMap } from './BattleMap';
 import { MapPreviews } from './MapPreview';
@@ -551,12 +551,16 @@ function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase;
 }
 
 /** A telegraph in the timeline: when it goes off, and the mechanic page that explains it. */
+const LIVE = 'live';
+
 function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onDelete, onCreatePage, onOpenPage, map, onMenu }: {
   m: Entity; phase: Phase; pages: MechanicPage[]; cardRef: (el: HTMLElement | null) => void; cardClass: string; handleProps: React.HTMLAttributes<HTMLElement>;
   onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onDelete: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void; map?: React.ReactNode; onMenu?: (x: number, y: number) => void;
 }) {
   const page = pages.find(g => g.id === m.page);
-  const image = page && m.image ? pageMaps(page).find(d => d.id === m.image) : undefined;
+  // The event's image: a map from its page (the first unless another is chosen), or this moment's live map.
+  const maps = page ? pageMaps(page) : [];
+  const image = m.image === LIVE ? undefined : maps.find(d => d.id === m.image) ?? maps[0];
   const tone = mechanicTone(m);
   return (
     <section ref={cardRef} data-timeline-id={m.id} onContextMenu={onMenu && (e => {
@@ -589,37 +593,28 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
         {page && <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open</button>}
       </div>
       {page && pageText(page) && <p className="page-excerpt">{pageText(page).length > 160 ? `${pageText(page).slice(0, 160)}…` : pageText(page)}</p>}
-      {page && pageMaps(page).length > 0 && (
-        <div className="image-picker" role="radiogroup" aria-label="Event image">
-          <span className="image-picker-label"><ImageIcon size={13} aria-hidden="true" /> Event image</span>
-          <div className="image-picker-options">
-            <button type="button" role="radio" aria-checked={!image} className={`image-option live${!image ? ' on' : ''}`} onClick={() => onChange({ image: undefined })}>
-              <MapPin size={16} /><span>This moment's map</span>
-            </button>
-            {pageMaps(page).map((d, i) => (
-              <button key={d.id} type="button" role="radio" aria-checked={image?.id === d.id} title={d.caption || `Map ${i + 1}`}
-                className={`image-option${image?.id === d.id ? ' on' : ''}`} onClick={() => onChange({ image: d.id })}>
-                <MapPreviews diagrams={[d]} width={96} max={1} />
-                <span>{d.caption || `Map ${i + 1}`}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       </div>
-      {image && page ? (
+      {(page && maps.length > 0) || map ? (
         <div className="conv-side">
-          <div className="timeline-map">
-            <div className="timeline-map-head">
-              <span>From “{page.title || 'Untitled page'}” · {image.caption || 'Map'}</span>
-              <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open page</button>
+          {image && page ? (
+            <div className="timeline-map">
+              <div className="timeline-map-head">
+                <span>From “{page.title || 'Untitled page'}”</span>
+                <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open page</button>
+              </div>
+              <div className="timeline-map-canvas">
+                <BattleMap plan={diagramPlan(image)} phaseIndex={0} cell={Math.max(10, Math.min(24, Math.floor(420 / (image.cols + 1))))} coords={false} showMoves={false} />
+              </div>
             </div>
-            <div className="timeline-map-canvas">
-              <BattleMap plan={diagramPlan(image)} phaseIndex={0} cell={Math.max(10, Math.min(24, Math.floor(420 / (image.cols + 1))))} coords={false} showMoves={false} />
-            </div>
-          </div>
+          ) : map}
+          {page && maps.length > 0 && (
+            <select className="image-select" aria-label="Event image" value={image ? image.id : LIVE} onChange={e => onChange({ image: e.target.value === maps[0].id ? undefined : e.target.value })}>
+              {maps.map((d, i) => <option key={d.id} value={d.id}>{d.caption || `Map ${i + 1}`}</option>)}
+              <option value={LIVE}>This moment on the timeline (editable)</option>
+            </select>
+          )}
         </div>
-      ) : map && <div className="conv-side">{map}</div>}
+      ) : null}
     </section>
   );
 }
