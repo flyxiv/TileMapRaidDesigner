@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneOf, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneOf, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -207,7 +207,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         } else {
           const [cx, cy] = mechanicOrigin(target, tphase.entities).point;
           // The corner sits at radius × √2 from the center along the diagonal; snap to half tiles.
-          const radius = Math.max(1, Math.min(8, Math.round((Math.hypot(p.point[0] - cx, p.point[1] - cy) / Math.SQRT2) * 2) / 2));
+          const radius = Math.max(1, Math.min(MAX_RADIUS, Math.round((Math.hypot(p.point[0] - cx, p.point[1] - cy) / Math.SQRT2) * 2) / 2));
           if (radius !== target.radius) setTarget({ radius, ...(target.inner !== undefined && target.inner >= radius ? { inner: Math.max(0.5, radius - 0.5) } : {}) });
         }
       }

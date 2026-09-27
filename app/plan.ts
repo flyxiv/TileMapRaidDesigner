@@ -54,6 +54,8 @@ export type Entity = {
   inner?: number; width?: number; push?: number; soak?: number;
   /** Cones only: the spread in degrees (default 90). */
   angle?: number;
+  /** Reaches the whole map: circles cover the arena, cones and lines run to its edge. */
+  infinite?: boolean;
   /** Units only: tiles per side, overriding the type's usual size. */
   size?: number;
   /** Cones and lines that start from a unit: aim the way that unit faces instead of their own rotation. */
@@ -131,6 +133,9 @@ export type Plan = { version: 2; name: string; cols: number; rows: number; phase
 export const isUnit = (kind: Kind): kind is UnitKind => kind in unitTypes;
 export const isMechanic = (kind: Kind): kind is MechanicKind => kind in mechanicTypes;
 export const MAX_UNIT_SIZE = 5;
+export const MAX_RADIUS = 40;
+/** How far a telegraph reaches, in tiles: its radius, or effectively unlimited when infinite. */
+export const reach = (m: Pick<Entity, 'radius' | 'infinite'>) => m.infinite ? 1000 : m.radius;
 export const footprint = (e: Pick<Entity, 'kind'> & { size?: number }) => isUnit(e.kind) ? e.size ?? unitTypes[e.kind].size : 1;
 export const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -282,6 +287,7 @@ export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, numbe
   // A tile is in a cone when its center is within half the spread of the facing (plus a degree of slack for edges).
   const halfAngle = Math.cos((Math.min(180, (m.angle ?? 90) / 2 + 1) * Math.PI) / 180);
   const inAnchor = (x: number, y: number) => !!anchor && x >= anchor.x && x < anchor.x + footprint(anchor) && y >= anchor.y && y < anchor.y + footprint(anchor);
+  const r = reach(m);
   const safeZones = m.kind === 'armageddon' ? phase.entities.filter(e => e.kind === 'marker').map(s => ({ c: mechanicOrigin(s, phase.entities).point, r: s.radius })) : [];
   const tiles: [number, number, number][] = [];
   for (let y = 0; y < plan.rows; y++) for (let x = 0; x < plan.cols; x++) {
@@ -290,25 +296,25 @@ export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, numbe
     let strength = 1;
     switch (m.kind) {
       case 'cone':
-        if (inAnchor(x, y) || d < 0.3 || d > m.radius + 0.2 || (dx * dir[0] + dy * dir[1]) / d < halfAngle) continue;
+        if (inAnchor(x, y) || d < 0.3 || d > r + 0.2 || (dx * dir[0] + dy * dir[1]) / d < halfAngle) continue;
         break;
       case 'line': {
         const along = dx * dir[0] + dy * dir[1], across = Math.abs(dx * dir[1] - dy * dir[0]);
-        if (inAnchor(x, y) || along < -0.01 || along > m.radius + 0.2 || across > (m.width ?? 1) / 2 + 0.01) continue;
+        if (inAnchor(x, y) || along < -0.01 || along > r + 0.2 || across > (m.width ?? 1) / 2 + 0.01) continue;
         break;
       }
       case 'donut':
-        if (d > m.radius || d <= (m.inner ?? 1)) continue;
+        if (d > r || d <= (m.inner ?? 1)) continue;
         break;
       case 'flare':
-        if (d > m.radius) continue;
-        strength = Math.max(0.25, 1 - d / (m.radius + 0.5));
+        if (d > r) continue;
+        strength = m.infinite ? 1 : Math.max(0.25, 1 - d / (r + 0.5));
         break;
       case 'armageddon':
         if (safeZones.some(s => Math.hypot(x + 0.5 - s.c[0], y + 0.5 - s.c[1]) <= s.r)) continue;
         break;
       default:
-        if (d > m.radius) continue;
+        if (d > r) continue;
     }
     tiles.push([x, y, strength]);
   }
@@ -477,8 +483,8 @@ export function validatePlan(value: unknown): value is Plan {
     entities.every(e => e && typeof e.id === 'string' && typeof e.name === 'string' && e.name.length <= 120 && typeof e.code === 'string' && e.code.length <= 6 &&
       (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
-      Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= 8 && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
-      num(e.inner, 0.5, 7.5) && num(e.angle, 10, 360) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
+      Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
+      num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
       (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&

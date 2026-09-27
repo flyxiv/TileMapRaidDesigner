@@ -1,6 +1,6 @@
 'use client';
-import { forwardRef, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -52,6 +52,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   const units = phase.entities.filter(e => isUnit(e.kind));
   const mechanics = phase.entities.filter(e => isMechanic(e.kind));
   const hazards = mechanics.map(m => ({ m, tiles: hazardTiles(m, phase, plan) }));
+  const clipId = useId().replace(/:/g, '');
   const selected = selectedId ? phase.entities.find(e => e.id === selectedId && e.kind !== 'armageddon') : undefined;
 
   const toTile = (e: ReactMouseEvent<SVGSVGElement>): [number, number] | null => {
@@ -134,8 +135,9 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
           }))}
         </g>
 
+        <clipPath id={`rd-clip-${clipId}`}><rect x={0} y={0} width={plan.cols * C} height={plan.rows * C} /></clipPath>
         {showTelegraphs && hazards.map(({ m, tiles }) => (
-          <g key={m.id} data-entity={m.id} opacity={selectedId && selectedId !== m.id ? 0.8 : 1}>
+          <g key={m.id} data-entity={m.id} opacity={selectedId && selectedId !== m.id ? 0.8 : 1} clipPath={`url(#rd-clip-${clipId})`}>
             {tiles.map(([x, y, strength]) => <HazardTile key={`${x},${y}`} m={m} x={x} y={y} strength={strength} C={C} />)}
             <MechanicOutline m={m} entities={phase.entities} C={C} selected={selectedId === m.id} />
           </g>
@@ -196,7 +198,7 @@ function Arrows({ cx, cy, from, to, count, tone, head }: { cx: number; cy: numbe
 
 function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: Entity[]; C: number; selected: boolean }) {
   const { point: [ox, oy], anchor } = mechanicOrigin(m, entities);
-  const cx = ox * C, cy = oy * C, R = m.radius * C, tone = mechanicTone(m), width = selected ? 2.4 : 1.5;
+  const cx = ox * C, cy = oy * C, R = reach(m) * C, tone = mechanicTone(m), width = selected ? 2.4 : 1.5;
   const a = (mechanicFacing(m, entities) * Math.PI) / 180, head = Math.max(4, C * 0.18);
   const ring = (r: number, dashed = true, opacity = 1) => <circle cx={cx} cy={cy} r={r} fill="none" stroke={tone} strokeWidth={width} strokeOpacity={opacity} strokeDasharray={dashed ? '5 4' : undefined} />;
   let shape = null;
@@ -209,7 +211,7 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
     case 'knockback': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={C * 0.45} to={C * 0.45 + (m.push ?? 2) * C} count={8} tone={tone} head={head} /></>; break;
     case 'donut': shape = <>{ring(R)}<circle cx={cx} cy={cy} r={(m.inner ?? 1) * C} fill="none" stroke={tones.safe} strokeWidth={width} /></>; break;
     case 'cone': {
-      const R2 = (m.radius + 0.3) * C, spread = Math.min(360, m.angle ?? 90), h = (spread * Math.PI) / 360;
+      const R2 = (reach(m) + 0.3) * C, spread = Math.min(360, m.angle ?? 90), h = (spread * Math.PI) / 360;
       const p = (t: number) => `${cx + R2 * Math.sin(t)} ${cy - R2 * Math.cos(t)}`;
       shape = spread >= 360
         ? <circle cx={cx} cy={cy} r={R2} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />
@@ -217,7 +219,7 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
       break;
     }
     case 'line': {
-      const dx = Math.sin(a), dy = -Math.cos(a), hw = ((m.width ?? 1) / 2) * C, L = (m.radius + 0.3) * C;
+      const dx = Math.sin(a), dy = -Math.cos(a), hw = ((m.width ?? 1) / 2) * C, L = (reach(m) + 0.3) * C;
       const pt = (along: number, across: number) => `${cx + dx * along - dy * across} ${cy + dy * along + dx * across}`;
       shape = <path d={`M${pt(0, -hw)} L${pt(L, -hw)} L${pt(L, hw)} L${pt(0, hw)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
       break;
@@ -238,9 +240,11 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   const { point: [ox, oy], anchor } = mechanicOrigin(m, entities);
   const a = (mechanicFacing(m, entities) * Math.PI) / 180;
   let [x, y] = [ox, oy];
-  if (m.kind === 'cone' || m.kind === 'line') [x, y] = [ox + Math.sin(a) * m.radius * (m.kind === 'cone' ? 0.88 : 0.55), oy - Math.cos(a) * m.radius * (m.kind === 'cone' ? 0.88 : 0.55)];
+  const labelAt = Math.min(reach(m), 4) * (m.kind === 'cone' ? 0.88 : 0.55);
+  if (m.kind === 'cone' || m.kind === 'line') [x, y] = [ox + Math.sin(a) * labelAt, oy - Math.cos(a) * labelAt];
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
   else if (m.kind === 'marker') y = oy + 1.25;
+  else if (m.infinite) y = oy + 1.2;
   else if (anchor) y = oy + Math.min(m.radius, 1.6) + 0.35; // keep the label off the targeted unit
   const tone = mechanicTone(m);
   const label = m.kind === 'tower' ? `${m.name} ×${m.soak ?? 1}` : m.name;
@@ -313,7 +317,7 @@ function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: nu
   const unit = isUnit(e.kind);
   const [ox, oy] = unit ? center(e) : mechanicOrigin(e, entities).point;
   const cx = ox * C, cy = oy * C;
-  const half = unit ? (footprint(e) * C) / 2 + 3 : e.radius * C;
+  const half = unit ? (footprint(e) * C) / 2 + 3 : e.infinite ? C * 0.6 : e.radius * C;
   // A telegraph that follows its unit's facing is aimed by rotating the unit instead.
   const rotates = unit || (aims(e.kind) && !(e.followFacing && e.anchor));
   const a = ((unit ? e.rotation : mechanicFacing(e, entities)) * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a);
@@ -324,10 +328,12 @@ function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: nu
     <g className="transform-box">
       <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} fill="none" stroke="#eef1ef" strokeOpacity="0.85" strokeWidth="1" pointerEvents="none" />
       {rotates && <line x1={sx} y1={sy} x2={hx} y2={hy} stroke="#eef1ef" strokeOpacity="0.85" strokeWidth="1" pointerEvents="none" />}
-      <Grip x={cx - half} y={cy - half} id={e.id} kind="nw" />
-      <Grip x={cx + half} y={cy - half} id={e.id} kind="ne" />
-      <Grip x={cx - half} y={cy + half} id={e.id} kind="sw" />
-      <Grip x={cx + half} y={cy + half} id={e.id} kind="se" />
+      {!e.infinite && <>
+        <Grip x={cx - half} y={cy - half} id={e.id} kind="nw" />
+        <Grip x={cx + half} y={cy - half} id={e.id} kind="ne" />
+        <Grip x={cx - half} y={cy + half} id={e.id} kind="sw" />
+        <Grip x={cx + half} y={cy + half} id={e.id} kind="se" />
+      </>}
       {rotates && <Grip x={hx} y={hy} id={e.id} kind="rotate" />}
     </g>
   );

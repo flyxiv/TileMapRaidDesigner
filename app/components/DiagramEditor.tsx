@@ -2,7 +2,7 @@
 import { ArrowDown, ArrowUp, GripVertical, Map as MapIcon, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
   nextCode, terrainTypes, uid, unitTypes, type Diagram, type Entity, type MechanicKind, type Terrain, type UnitKind,
 } from '../plan';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
@@ -64,7 +64,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
           if (size !== s) patch(target.id, { size: size === unitTypes[target.kind as UnitKind].size ? undefined : size, x: left ? ax - size : ax, y: top ? ay - size : ay });
         } else {
           const [cx, cy] = mechanicOrigin(target, d.entities).point;
-          const radius = Math.max(1, Math.min(8, Math.round((Math.hypot(p.point[0] - cx, p.point[1] - cy) / Math.SQRT2) * 2) / 2));
+          const radius = Math.max(1, Math.min(MAX_RADIUS, Math.round((Math.hypot(p.point[0] - cx, p.point[1] - cy) / Math.SQRT2) * 2) / 2));
           if (radius !== target.radius) patch(target.id, { radius, ...(target.inner !== undefined && target.inner >= radius ? { inner: Math.max(0.5, radius - 0.5) } : {}) });
         }
       }

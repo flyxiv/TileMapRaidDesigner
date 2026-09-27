@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -156,7 +156,11 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
     )}
     {show.origin && !anchor && <PositionFields plan={plan} e={m} onChange={onChange} />}
     {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
-    {show.radius && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={8} step={0.1} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
+    {show.radius && <>
+      {!m.infinite && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={MAX_RADIUS} step={0.5} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
+      <label className="check"><input type="checkbox" checked={!!m.infinite} onChange={ev => onChange({ infinite: ev.target.checked || undefined })} />
+        Infinite {m.kind === 'line' ? 'length' : 'radius'} <span className="hint">{m.kind === 'cone' || m.kind === 'line' ? '(runs to the edge of the map)' : '(covers the whole arena)'}</span></label>
+    </>}
     {show.inner && <Slider label="Safe radius" value={m.inner ?? 1} unit="tiles" min={0.5} max={Math.max(0.5, m.radius - 0.5)} step={0.1} onChange={v => onChange({ inner: v }, `inner-${m.id}`)} />}
     {show.width && <Slider label="Width" value={m.width ?? 1} unit={(m.width ?? 1) === 1 ? 'tile' : 'tiles'} min={1} max={8} step={1} onChange={v => onChange({ width: v }, `width-${m.id}`)} />}
     {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
