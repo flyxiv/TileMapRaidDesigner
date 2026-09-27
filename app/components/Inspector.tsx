@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
 import { EventIcon } from './EventIcon';
@@ -168,6 +168,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
     )}
     {show.origin && !anchor && <PositionFields plan={plan} e={m} onChange={onChange} />}
     {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
+    {aimedAtTargets(m, phase.entities) && <p className="hint">Aims from its start toward each target, running its full length (through the target).</p>}
     {show.radius && <>
       {!m.infinite && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={MAX_RADIUS} step={0.5} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
       <label className="check"><input type="checkbox" checked={!!m.infinite} onChange={ev => onChange({ infinite: ev.target.checked || undefined })} />
@@ -180,7 +181,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
     {m.kind !== 'marker' && <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />}
     <TargetsField phase={phase} value={m.targets} onChange={v => onChange({ targets: v })} />
     {show.angle && <Slider label="Spread" value={m.angle ?? 90} unit="°" min={15} max={360} step={15} onChange={v => onChange({ angle: v }, `angle-${m.id}`)} />}
-    {show.facing && !(anchor && m.followFacing) && (
+    {show.facing && !(anchor && m.followFacing) && !aimedAtTargets(m, phase.entities) && (
       <label className="field">
         <span className="field-line">Facing <b>{facingLabel(m.rotation)}</b></span>
         <input type="range" min={0} max={345} step={15} value={m.rotation} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${m.id}`)} />

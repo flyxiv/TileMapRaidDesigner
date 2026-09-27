@@ -301,6 +301,23 @@ export function mechanicOrigin(m: Entity, entities: Entity[]): { point: [number,
   return anchor ? { point: center(anchor), anchor } : { point: center(m) };
 }
 
+/**
+ * The segments a line telegraph covers, from its origin, each its full length: one toward each of its targets when it
+ * has any (so it can pass through them), else one along its facing. Directions are unit vectors in tile space.
+ */
+export function lineSegments(m: Entity, entities: Entity[]): { dir: [number, number]; length: number }[] {
+  const [ox, oy] = mechanicOrigin(m, entities).point;
+  const targets = (m.targets ?? []).flatMap(id => { const u = entities.find(e => e.id === id && isUnit(e.kind)); return u ? [center(u)] : []; });
+  if (targets.length) return targets.flatMap(([tx, ty]) => {
+    const len = Math.hypot(tx - ox, ty - oy);
+    return len > 0.01 ? [{ dir: [(tx - ox) / len, (ty - oy) / len] as [number, number], length: reach(m) }] : [];
+  });
+  const a = (mechanicFacing(m, entities) * Math.PI) / 180;
+  return [{ dir: [Math.sin(a), -Math.cos(a)], length: reach(m) }];
+}
+/** A line with targets aims itself at them; only its facing comes from the targets. */
+export const aimedAtTargets = (m: Entity, entities: Entity[]) => m.kind === 'line' && (m.targets ?? []).some(id => entities.some(e => e.id === id && isUnit(e.kind)));
+
 /** Direction a telegraph points, in compass degrees: its own rotation, or its unit's facing when it follows it. */
 export function mechanicFacing(m: Entity, entities: Entity[]) {
   const anchor = m.followFacing ? mechanicOrigin(m, entities).anchor : undefined;
@@ -317,6 +334,7 @@ export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, numbe
   const halfAngle = Math.cos((Math.min(180, (m.angle ?? 90) / 2 + 1) * Math.PI) / 180);
   const inAnchor = (x: number, y: number) => !!anchor && x >= anchor.x && x < anchor.x + footprint(anchor) && y >= anchor.y && y < anchor.y + footprint(anchor);
   const r = reach(m);
+  const segments = m.kind === 'line' ? lineSegments(m, phase.entities) : [];
   const safeZones = m.kind === 'armageddon' ? phase.entities.filter(e => e.kind === 'marker').map(s => ({ c: mechanicOrigin(s, phase.entities).point, r: s.radius })) : [];
   const tiles: [number, number, number][] = [];
   for (let y = 0; y < plan.rows; y++) for (let x = 0; x < plan.cols; x++) {
@@ -328,8 +346,13 @@ export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, numbe
         if (inAnchor(x, y) || d < 0.3 || d > r + 0.2 || (dx * dir[0] + dy * dir[1]) / d < halfAngle) continue;
         break;
       case 'line': {
-        const along = dx * dir[0] + dy * dir[1], across = Math.abs(dx * dir[1] - dy * dir[0]);
-        if (inAnchor(x, y) || along < -0.01 || along > r + 0.2 || across > (m.width ?? 1) / 2 + 0.01) continue;
+        if (inAnchor(x, y)) continue;
+        const half = (m.width ?? 1) / 2 + 0.01;
+        const onSegment = segments.some(({ dir: [ux, uy], length }) => {
+          const along = dx * ux + dy * uy, across = Math.abs(dx * uy - dy * ux);
+          return along >= -0.01 && along <= length + 0.2 && across <= half;
+        });
+        if (!onSegment) continue;
         break;
       }
       case 'donut':

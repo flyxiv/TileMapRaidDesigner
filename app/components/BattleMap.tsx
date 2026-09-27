@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { MarkerShape, glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -161,6 +161,9 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
 
         {units.map(u => <UnitToken key={u.id} u={u} C={C} />)}
 
+        {/* Head markers float above their unit, drawn over every token so a neighbour never hides one. */}
+        {C >= 12 && units.map(u => u.marker && <HeadMarker key={`mark-${u.id}`} u={u} C={C} />)}
+
         {showTelegraphs && mechanics.flatMap(m => (m.targets ?? []).flatMap(id => {
           const u = units.find(x => x.id === id);
           return u ? [<TargetMark key={`${m.id}-${id}`} u={u} C={C} tone={mechanicTone(m)} />] : [];
@@ -224,9 +227,13 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
       break;
     }
     case 'line': {
-      const dx = Math.sin(a), dy = -Math.cos(a), hw = ((m.width ?? 1) / 2) * C, L = (reach(m) + 0.3) * C;
-      const pt = (along: number, across: number) => `${cx + dx * along - dy * across} ${cy + dy * along + dx * across}`;
-      shape = <path d={`M${pt(0, -hw)} L${pt(L, -hw)} L${pt(L, hw)} L${pt(0, hw)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
+      // One band per target (ending at it), or one along the facing.
+      const hw = ((m.width ?? 1) / 2) * C;
+      shape = <>{lineSegments(m, entities).map(({ dir: [dx, dy], length }, i) => {
+        const L = (length + 0.3) * C;
+        const pt = (along: number, across: number) => `${cx + dx * along - dy * across} ${cy + dy * along + dx * across}`;
+        return <path key={i} d={`M${pt(0, -hw)} L${pt(L, -hw)} L${pt(L, hw)} L${pt(0, hw)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
+      })}</>;
       break;
     }
     case 'marker': {
@@ -246,7 +253,8 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   const a = (mechanicFacing(m, entities) * Math.PI) / 180;
   let [x, y] = [ox, oy];
   const labelAt = Math.min(reach(m), 4) * (m.kind === 'cone' ? 0.88 : 0.55);
-  if (m.kind === 'cone' || m.kind === 'line') [x, y] = [ox + Math.sin(a) * labelAt, oy - Math.cos(a) * labelAt];
+  if (m.kind === 'line') { const [s] = lineSegments(m, entities); if (s) [x, y] = [ox + s.dir[0] * Math.min(s.length * 0.5, labelAt), oy + s.dir[1] * Math.min(s.length * 0.5, labelAt)]; }
+  else if (m.kind === 'cone') [x, y] = [ox + Math.sin(a) * labelAt, oy - Math.cos(a) * labelAt];
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
   else if (m.kind === 'marker') y = oy + 1.25;
   else if (m.infinite) y = oy + 1.2;
@@ -286,15 +294,6 @@ function UnitToken({ u, C }: { u: Entity; C: number }) {
         </svg>
         <path d={`M${cx} ${cy - r + 2.5} L${cx + notch} ${cy - r + 2.5 + notch} L${cx - notch} ${cy - r + 2.5 + notch} Z`} fill={type.color} />
       </g>}
-      {u.marker && !tiny && (() => {
-        const m = Math.max(12, Math.min(22, C * 0.62));
-        return (
-          <g pointerEvents="none">
-            <circle cx={cx + r - 1} cy={cy - r + 1} r={m / 2 + 2} fill="#0f1314" />
-            <svg x={cx + r - 1 - m / 2} y={cy - r + 1 - m / 2} width={m} height={m} viewBox="0 0 24 24"><MarkerShape kind={u.marker} /></svg>
-          </g>
-        );
-      })()}
       {!big && C >= 28 && u.code && (
         <g transform={`translate(${cx} ${cy + r - 1})`}>
           <rect x={-(u.code.length * 3 + 5)} y={-5} width={u.code.length * 6 + 10} height={11} rx="3" fill="#0f1314" stroke={type.color} />
@@ -333,7 +332,9 @@ function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: nu
   const cx = ox * C, cy = oy * C;
   const half = unit ? (footprint(e) * C) / 2 + 3 : e.infinite ? C * 0.6 : e.radius * C;
   // A telegraph that follows its unit's facing is aimed by rotating the unit instead.
-  const rotates = unit || (aims(e.kind) && !(e.followFacing && e.anchor));
+  // Targeted lines aim themselves at their targets: they keep their length handles but have nothing to rotate.
+  const aimed = aimedAtTargets(e, entities);
+  const rotates = unit || (aims(e.kind) && !(e.followFacing && e.anchor) && !aimed);
   const a = ((unit ? e.rotation : mechanicFacing(e, entities)) * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a);
   // The stem leaves the box edge in the facing direction.
   const edge = half / Math.max(Math.abs(dx), Math.abs(dy)), stem = Math.max(22, C * 0.8);
@@ -399,6 +400,22 @@ function TargetMark({ u, C, tone }: { u: Entity; C: number; tone: string }) {
     <g pointerEvents="none" className="target-mark">
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={tone} strokeWidth="1.8" strokeDasharray="4 3" />
       <path d={`M${cx} ${cy - r - t} V${cy - r + t} M${cx} ${cy + r - t} V${cy + r + t} M${cx - r - t} ${cy} H${cx - r + t} M${cx + r - t} ${cy} H${cx + r + t}`} stroke={tone} strokeWidth="2" strokeLinecap="round" />
+    </g>
+  );
+}
+
+/** A unit's head marker, centred above it (above the name tag on large units). */
+function HeadMarker({ u, C }: { u: Entity; C: number }) {
+  if (!u.marker) return null;
+  const size = Math.max(14, Math.min(24, C * 0.7));
+  const [cx] = center(u).map(v => v * C);
+  const top = u.y * C;
+  const nameTag = footprint(u) > 1 && C >= 22 ? 24 : 0;
+  const y = top - nameTag - 3 - size;
+  return (
+    <g pointerEvents="none" className="head-marker">
+      <circle cx={cx} cy={y + size / 2} r={size / 2 + 2} fill="#0f1314" fillOpacity="0.85" />
+      <svg x={cx - size / 2} y={y} width={size} height={size} viewBox="0 0 24 24"><MarkerShape kind={u.marker} /></svg>
     </g>
   );
 }
