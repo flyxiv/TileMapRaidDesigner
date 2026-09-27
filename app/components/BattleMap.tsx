@@ -5,9 +5,14 @@ import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
 /**
- * `point` is the pointer in tile units (fractional); `rotateId` is set when a press starts on a unit's rotation handle.
+ * `point` is the pointer in tile units (fractional); `handle` is set when a press starts on the selection's
+ * transform box: a corner (resize) or the rotation handle.
  */
-export type MapPointer = { type: 'down' | 'move' | 'up'; tile: [number, number] | null; point: [number, number] | null; entityId?: string; rotateId?: string; event: ReactPointerEvent<SVGSVGElement> };
+export type TransformHandle = 'rotate' | 'nw' | 'ne' | 'sw' | 'se';
+export type MapPointer = {
+  type: 'down' | 'move' | 'up'; tile: [number, number] | null; point: [number, number] | null;
+  entityId?: string; handle?: { id: string; kind: TransformHandle }; event: ReactPointerEvent<SVGSVGElement>;
+};
 
 type Props = {
   plan: Plan;
@@ -19,6 +24,8 @@ type Props = {
   showTelegraphs?: boolean;
   selectedId?: string | null;
   highlight?: { x: number; y: number; size: number } | null;
+  /** Show resize and rotate handles on the selected unit or telegraph. */
+  transform?: boolean;
   /** Dialogue line to show as a bubble over its speaker. */
   speech?: Speech | null;
   onPointer?: (p: MapPointer) => void;
@@ -34,7 +41,7 @@ const terrainFill: Record<string, string> = {
 };
 
 export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
-  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, onPointer, onLeave, onDragTile, onDropTile, className }, ref,
+  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, transform, onPointer, onLeave, onDragTile, onDropTile, className }, ref,
 ) {
   const phase = plan.phases[phaseIndex];
   const prev = phaseIndex > 0 ? plan.phases[phaseIndex - 1] : null;
@@ -43,6 +50,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   const units = phase.entities.filter(e => isUnit(e.kind));
   const mechanics = phase.entities.filter(e => isMechanic(e.kind));
   const hazards = mechanics.map(m => ({ m, tiles: hazardTiles(m, phase, plan) }));
+  const selected = selectedId ? phase.entities.find(e => e.id === selectedId && e.kind !== 'armageddon') : undefined;
 
   const toTile = (e: ReactMouseEvent<SVGSVGElement>): [number, number] | null => {
     const svg = e.currentTarget, ctm = svg.getScreenCTM();
@@ -53,7 +61,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   };
   const handle = (type: MapPointer['type']) => onPointer && ((event: ReactPointerEvent<SVGSVGElement>) => {
     const target = (event.target as Element).closest('[data-entity]');
-    const rotate = (event.target as Element).closest('[data-rotate]');
+    const grip = (event.target as Element).closest('[data-handle]');
     const ctm = event.currentTarget.getScreenCTM();
     const pt = ctm && new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
     const point: [number, number] | null = pt ? [(pt.x - G) / C, (pt.y - G) / C] : null;
@@ -61,7 +69,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
     onPointer({
       type, tile: toTile(event), point, event,
       entityId: type === 'down' ? target?.getAttribute('data-entity') ?? undefined : undefined,
-      rotateId: type === 'down' ? rotate?.getAttribute('data-rotate') ?? undefined : undefined,
+      handle: type === 'down' && grip ? { id: grip.getAttribute('data-for')!, kind: grip.getAttribute('data-handle') as TransformHandle } : undefined,
     });
   });
 
@@ -150,7 +158,9 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
         {/* Labels sit under the tokens and stay translucent so they never hide a unit. */}
         {showTelegraphs && C >= 22 && mechanics.map(m => <MechanicChip key={m.id} m={m} plan={plan} entities={phase.entities} C={C} selected={selectedId === m.id} />)}
 
-        {units.map(u => <UnitToken key={u.id} u={u} C={C} selected={selectedId === u.id} />)}
+        {units.map(u => <UnitToken key={u.id} u={u} C={C} />)}
+
+        {transform && selected && <TransformBox e={selected} entities={phase.entities} C={C} />}
 
         {speech && <SpeechBubble speech={speech} units={units} C={C} mapWidth={plan.cols * C} gutter={G} />}
 
@@ -247,7 +257,7 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
 
 const compass = (deg: number) => deg % 45 === 0 ? ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][deg / 45] : `${deg}°`;
 
-function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean }) {
+function UnitToken({ u, C }: { u: Entity; C: number }) {
   const type = unitTypes[u.kind as keyof typeof unitTypes];
   const big = footprint(u) > 1, heavy = big || u.kind === 'miniboss';
   const [cx, cy] = center(u).map(v => v * C);
@@ -255,10 +265,9 @@ function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean
   const tiny = C < 12, inset = Math.min(2, C * 0.08), size = footprint(u) * C - inset * 2, r = size / 2, rx = Math.max(1, C * (big ? 0.18 : 0.14));
   const icon = Math.round(size * (big ? 0.46 : 0.54));
   // Facing, in compass degrees (0 = up): the icon turns with it and a notch marks the front edge.
-  const turn = `rotate(${u.rotation} ${cx} ${cy})`, notch = Math.max(3, Math.min(C * 0.2, r * 0.35)), handleAt = r + Math.max(10, C * 0.4);
+  const turn = `rotate(${u.rotation} ${cx} ${cy})`, notch = Math.max(3, Math.min(C * 0.2, r * 0.35));
   return (
     <g data-entity={u.id} style={{ cursor: 'grab' }} aria-label={`${u.name}, ${tileLabel(u.x, u.y)}, facing ${compass(u.rotation)}`}>
-      {selected && <rect x={cx - r - 3} y={cy - r - 3} width={size + 6} height={size + 6} rx={rx + 3} fill="none" stroke={tones.safe} strokeWidth="2" />}
       <rect x={cx - r} y={cy - r + 1.5} width={size} height={size} rx={rx} fill="rgba(0,0,0,0.35)" />
       {tiny
         ? <rect x={cx - r} y={cy - r} width={size} height={size} rx={rx} fill={type.color} />
@@ -281,15 +290,45 @@ function UnitToken({ u, C, selected }: { u: Entity; C: number; selected: boolean
           <text textAnchor="middle" dominantBaseline="central" y={-8.5} fontSize="10" fontWeight="600" fill="#f1c4b5" fontFamily="'Space Grotesk', sans-serif">{u.name}</text>
         </g>
       )}
-      {/* Drawn last so the name tag never covers it. */}
-      {selected && !tiny && (
-        <g transform={turn} data-rotate={u.id} style={{ cursor: 'crosshair' }}>
-          <title>Drag to rotate</title>
-          <line x1={cx} y1={cy - r - 3} x2={cx} y2={cy - handleAt + 5} stroke={tones.safe} strokeWidth="1.5" />
-          <circle cx={cx} cy={cy - handleAt} r={6} fill="#141819" stroke={tones.safe} strokeWidth="2" />
-          <circle cx={cx} cy={cy - handleAt} r={12} fill="transparent" />
-        </g>
-      )}
+    </g>
+  );
+}
+
+const resizeCursor: Record<TransformHandle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', rotate: 'grab' };
+
+/** Handle square; the larger transparent square under it is the hit area. */
+function Grip({ x, y, id, kind }: { x: number; y: number; id: string; kind: TransformHandle }) {
+  return (
+    <g data-handle={kind} data-for={id} style={{ cursor: resizeCursor[kind] }}>
+      <rect x={x - 9} y={y - 9} width={18} height={18} fill="transparent" />
+      <rect x={x - 4.5} y={y - 4.5} width={9} height={9} fill="#eef1ef" stroke="#141819" strokeWidth="1.2" />
+    </g>
+  );
+}
+
+/**
+ * Selection box with corner handles that resize and, for units and directional telegraphs, a stem with a rotation
+ * handle pointing the way it faces. Units resize by whole tiles; telegraphs change their radius.
+ */
+function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: number }) {
+  const unit = isUnit(e.kind);
+  const [ox, oy] = unit ? center(e) : mechanicOrigin(e, entities).point;
+  const cx = ox * C, cy = oy * C;
+  const half = unit ? (footprint(e) * C) / 2 + 3 : e.radius * C;
+  const rotates = unit || e.kind === 'cone' || e.kind === 'line';
+  const a = (e.rotation * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a);
+  // The stem leaves the box edge in the facing direction.
+  const edge = half / Math.max(Math.abs(dx), Math.abs(dy)), stem = Math.max(22, C * 0.8);
+  const sx = cx + dx * edge, sy = cy + dy * edge, hx = cx + dx * (edge + stem), hy = cy + dy * (edge + stem);
+  return (
+    <g className="transform-box">
+      <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} fill="none" stroke="#eef1ef" strokeOpacity="0.85" strokeWidth="1" pointerEvents="none" />
+      {rotates && <line x1={sx} y1={sy} x2={hx} y2={hy} stroke="#eef1ef" strokeOpacity="0.85" strokeWidth="1" pointerEvents="none" />}
+      <Grip x={cx - half} y={cy - half} id={e.id} kind="nw" />
+      <Grip x={cx + half} y={cy - half} id={e.id} kind="ne" />
+      <Grip x={cx - half} y={cy + half} id={e.id} kind="sw" />
+      <Grip x={cx + half} y={cy + half} id={e.id} kind="se" />
+      {rotates && <Grip x={hx} y={hy} id={e.id} kind="rotate" />}
     </g>
   );
 }

@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  center, clampEntity, createMechanic, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
+  MAX_UNIT_SIZE, center, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode, phaseTurnRanges,
   terrainTypes, tileLabel, turnRangeText, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
-import { BattleMap, type MapPointer } from './BattleMap';
+import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
 import { Glyph, Logo } from './glyphs';
 import { Inspector } from './Inspector';
 import { PresentView } from './PresentView';
@@ -17,7 +17,7 @@ import { StoryPanel } from './StoryPanel';
 
 type Tool = { type: 'select' } | { type: 'erase' } | { type: 'terrain'; terrain: Terrain } | { type: 'unit'; kind: UnitKind } | { type: 'mechanic'; kind: MechanicKind };
 type History = { past: Plan[]; present: Plan; future: Plan[] };
-type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate'; id?: string; offset?: [number, number] };
+type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize'; id?: string; offset?: [number, number]; corner?: TransformHandle };
 
 const BASE_CELL = 32;
 const zoomSteps = [0.5, 0.625, 0.75, 0.875, 1, 1.25, 1.5, 1.75, 2];
@@ -169,17 +169,32 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     if (p.type === 'move') {
       setHover(p.tile);
       const g = gesture.current;
-      if (!g || !p.tile) return;
-      if (g.mode === 'paint' && tool.type === 'terrain') preview(pl => paint(pl, pi, paintAll, brushTiles(...p.tile!), tool.terrain));
-      if (g.mode === 'rotate' && g.id && p.point) {
-        // Point the unit at the cursor, snapped to the 8 compass directions.
-        const u = phase.entities.find(e => e.id === g.id);
-        if (u) {
-          const [cx, cy] = center(u), deg = (Math.atan2(p.point[0] - cx, -(p.point[1] - cy)) * 180) / Math.PI;
-          const rotation = ((Math.round(deg / 45) * 45) % 360 + 360) % 360;
-          if (rotation !== u.rotation) preview(pl => updatePhase(pl, pi, f => ({ ...f, entities: f.entities.map(e => e.id === g.id ? { ...e, rotation } : e) })));
+      if (!g) return;
+      const target = g.id ? phase.entities.find(e => e.id === g.id) : undefined;
+      const setTarget = (patch: Partial<Entity>) => preview(pl => updatePhase(pl, pi, f => ({ ...f, entities: f.entities.map(e => e.id === g.id ? clampEntity({ ...e, ...patch }, pl) : e) })));
+      if (g.mode === 'rotate' && target && p.point) {
+        // Point at the cursor: units snap to the 8 compass directions, telegraphs to 15° steps.
+        const [cx, cy] = isUnit(target.kind) ? center(target) : mechanicOrigin(target, phase.entities).point;
+        const step = isUnit(target.kind) ? 45 : 15, deg = (Math.atan2(p.point[0] - cx, -(p.point[1] - cy)) * 180) / Math.PI;
+        const rotation = ((Math.round(deg / step) * step) % 360 + 360) % 360;
+        if (rotation !== target.rotation) setTarget({ rotation });
+      }
+      if (g.mode === 'resize' && target && p.point && g.corner) {
+        if (isUnit(target.kind)) {
+          // Whole tiles, keeping the corner opposite the dragged one in place.
+          const s = footprint(target), left = g.corner === 'nw' || g.corner === 'sw', top = g.corner === 'nw' || g.corner === 'ne';
+          const ax = left ? target.x + s : target.x, ay = top ? target.y + s : target.y;
+          const size = Math.max(1, Math.min(MAX_UNIT_SIZE, plan.cols, plan.rows, Math.round(Math.max(Math.abs(p.point[0] - ax), Math.abs(p.point[1] - ay)))));
+          if (size !== s) setTarget({ size: size === unitTypes[target.kind as UnitKind].size ? undefined : size, x: left ? ax - size : ax, y: top ? ay - size : ay });
+        } else {
+          const [cx, cy] = mechanicOrigin(target, phase.entities).point;
+          // The corner sits at radius × √2 from the center along the diagonal; snap to half tiles.
+          const radius = Math.max(1, Math.min(8, Math.round((Math.hypot(p.point[0] - cx, p.point[1] - cy) / Math.SQRT2) * 2) / 2));
+          if (radius !== target.radius) setTarget({ radius, ...(target.inner !== undefined && target.inner >= radius ? { inner: Math.max(0.5, radius - 0.5) } : {}) });
         }
       }
+      if (!p.tile) return;
+      if (g.mode === 'paint' && tool.type === 'terrain') preview(pl => paint(pl, pi, paintAll, brushTiles(...p.tile!), tool.terrain));
       if (g.mode === 'drag' && g.id && g.offset) {
         const [x, y] = [p.tile[0] - g.offset[0], p.tile[1] - g.offset[1]];
         preview(pl => updatePhase(pl, pi, f => ({ ...f, entities: f.entities.map(e => e.id === g.id ? clampEntity({ ...e, x, y }, pl) : e) })));
@@ -190,7 +205,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     const hit = p.entityId ? phase.entities.find(e => e.id === p.entityId) : tile ? entityAt(phase, ...tile) : undefined;
     switch (tool.type) {
       case 'select': {
-        if (p.rotateId) { gesture.current = { base: presentRef.current, mode: 'rotate', id: p.rotateId }; break; }
+        if (p.handle) {
+          gesture.current = p.handle.kind === 'rotate'
+            ? { base: presentRef.current, mode: 'rotate', id: p.handle.id }
+            : { base: presentRef.current, mode: 'resize', id: p.handle.id, corner: p.handle.kind };
+          break;
+        }
         setSelectedId(hit?.id ?? null);
         if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { base: presentRef.current, mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
         break;
@@ -443,7 +463,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <BattleMap
                 ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={selectedId}
                 showMoves={layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
-                highlight={highlight} speech={speech} onPointer={onPointer} onLeave={() => setHover(null)}
+                highlight={highlight} speech={speech} transform={tool.type === 'select'} onPointer={onPointer} onLeave={() => setHover(null)}
                 onDragTile={t => dragItem && setHover(t)} onDropTile={t => { if (dragItem) spawn(dragItem, t); setDragItem(null); }}
               />
             </div>
