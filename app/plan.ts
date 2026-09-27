@@ -72,7 +72,22 @@ export type DialogueTrigger =
 /** One line of dialogue. Lines belong to a conversation and play in order. */
 export type DialogueLine = { id: string; speaker: string; text: string; options: DialogueOption[]; placement?: DialoguePlacement };
 /** Lines spoken together, starting when the trigger fires. */
-export type Conversation = { id: string; title: string; trigger: DialogueTrigger; lines: DialogueLine[] };
+/**
+ * A stage direction for a unit during a conversation: a motion or gesture described in words, turning to face a
+ * direction (or toward another unit), or moving to a tile.
+ */
+export type StageAction =
+  | { kind: 'motion'; motion: string }
+  | { kind: 'face'; rotation: number; toward?: string }
+  | { kind: 'move'; x: number; y: number };
+export type ActionStep = { id: string; type: 'action'; actor: string; action: StageAction };
+/** Conversations are sequences of spoken lines and actions. */
+export type ConversationStep = DialogueLine | ActionStep;
+export const isAction = (s: ConversationStep): s is ActionStep => (s as ActionStep).type === 'action';
+export const actionKinds = { motion: 'Motion', face: 'Turn', move: 'Move' };
+export const motionPresets = ['Kneels', 'Bows', 'Points', 'Raises weapon', 'Casts', 'Laughs', 'Staggers', 'Collapses'];
+/** Lines spoken together, starting when the trigger fires. `lines` holds its steps: spoken lines and actions, in order. */
+export type Conversation = { id: string; title: string; trigger: DialogueTrigger; lines: ConversationStep[] };
 export const triggerTypes = { hp: 'Boss HP', time: 'Encounter time', mechanic: 'After mechanic' };
 export type Phase = { id: string; name: string; notes: string; terrain: Terrain[][]; entities: Entity[]; conversations: Conversation[] };
 export type Plan = { version: 2; name: string; cols: number; rows: number; phases: Phase[] };
@@ -95,7 +110,43 @@ export function mechanicTone(e: Pick<Entity, 'kind'>) {
 export const createLine = (speaker: string): DialogueLine => ({ id: uid('line'), speaker, text: '', options: [] });
 export const createConversation = (trigger: DialogueTrigger, speaker: string): Conversation => ({ id: uid('conv'), title: '', trigger, lines: [createLine(speaker)] });
 /** Every line in a phase in playing order, with the conversation it belongs to. */
-export const scriptOf = (phase: Phase) => phase.conversations.flatMap(conversation => conversation.lines.map(line => ({ conversation, line })));
+export const createAction = (actor: string): ActionStep => ({ id: uid('act'), type: 'action', actor, action: { kind: 'motion', motion: '' } });
+export const scriptOf = (phase: Phase) => phase.conversations.flatMap(conversation => conversation.lines.map(step => ({ conversation, step })));
+
+const compassNames = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+export const compassName = (deg: number) => deg % 45 === 0 ? compassNames[deg / 45] : `${deg}°`;
+
+/** Where an action's actor ends up facing: a fixed direction, or toward another unit (snapped to 8 directions). */
+export function faceRotation(step: ActionStep, entities: Entity[]) {
+  if (step.action.kind !== 'face') return undefined;
+  const { toward, rotation } = step.action;
+  const actor = entities.find(e => e.id === step.actor), target = toward ? entities.find(e => e.id === toward) : undefined;
+  if (!actor || !target) return rotation;
+  const [ax, ay] = center(actor), [tx, ty] = center(target);
+  return ((Math.round(Math.atan2(tx - ax, -(ty - ay)) * 180 / Math.PI / 45) * 45) % 360 + 360) % 360;
+}
+
+/** A short description of an action, e.g. "Boss moves to F7" or "Boss turns toward Main tank". */
+export function actionText(step: ActionStep, phase: Phase) {
+  const name = phase.entities.find(e => e.id === step.actor)?.name ?? 'Someone';
+  const a = step.action;
+  if (a.kind === 'motion') return `${name} ${a.motion ? a.motion.charAt(0).toLowerCase() + a.motion.slice(1) : '…'}`;
+  if (a.kind === 'move') return `${name} moves to ${tileLabel(a.x, a.y)}`;
+  const target = a.toward ? phase.entities.find(e => e.id === a.toward) : undefined;
+  return target ? `${name} turns toward ${target.name}` : `${name} turns to face ${compassName(a.rotation)}`;
+}
+
+/** The phase as it stands after the given actions play, in order: units moved and turned. */
+export function stagePhase(phase: Phase, plan: Plan, actions: ActionStep[]): Phase {
+  let entities = phase.entities;
+  for (const step of actions) {
+    const a = step.action;
+    if (a.kind === 'motion') continue;
+    const rotation = a.kind === 'face' ? faceRotation(step, entities) : undefined;
+    entities = entities.map(e => e.id !== step.actor ? e : a.kind === 'move' ? clampEntity({ ...e, x: a.x, y: a.y }, plan) : { ...e, rotation: rotation ?? e.rotation });
+  }
+  return entities === phase.entities ? phase : { ...phase, entities };
+}
 export const lineCount = (phase: Phase) => phase.conversations.reduce((n, c) => n + c.lines.length, 0);
 
 export const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -307,6 +358,10 @@ export function validatePlan(value: unknown): value is Plan {
     (t.type === 'hp' && int(t.percent, 0, 100) && (t.target === undefined || typeof t.target === 'string')) ||
     (t.type === 'time' && int(t.seconds, 0, 5999)) ||
     (t.type === 'mechanic' && typeof t.mechanic === 'string' && int(t.seconds, 0, 5999)));
+  const validAction = (s: ActionStep) => typeof s.actor === 'string' && !!s.action && (
+    (s.action.kind === 'motion' && typeof s.action.motion === 'string' && s.action.motion.length <= 120) ||
+    (s.action.kind === 'face' && int(s.action.rotation, 0, 359) && (s.action.toward === undefined || typeof s.action.toward === 'string')) ||
+    (s.action.kind === 'move' && int(s.action.x, 0, p.cols - 1) && int(s.action.y, 0, p.rows - 1)));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&
     Array.isArray(p.phases) && p.phases.length > 0 && p.phases.length <= 30 && new Set(p.phases.map(f => f?.id)).size === p.phases.length &&
@@ -322,11 +377,11 @@ export function validatePlan(value: unknown): value is Plan {
       Array.isArray(f.conversations) && f.conversations.length <= 100 && new Set(f.conversations.map(c => c?.id)).size === f.conversations.length &&
       f.conversations.every(c => c && typeof c.id === 'string' && typeof c.title === 'string' && c.title.length <= 120 && validTrigger(c.trigger) &&
         Array.isArray(c.lines) && c.lines.length <= 200 && new Set(c.lines.map(l => l?.id)).size === c.lines.length &&
-      c.lines.every(l => l && typeof l.id === 'string' && typeof l.speaker === 'string' && l.speaker.length <= 60 &&
+      c.lines.every(l => l && typeof l.id === 'string' && (isAction(l) ? validAction(l) : typeof l.speaker === 'string' && l.speaker.length <= 60 &&
         typeof l.text === 'string' && l.text.length <= 2000 && Array.isArray(l.options) && l.options.length <= 6 &&
         (l.placement === undefined || l.placement === 'unit' || l.placement === 'top') &&
         l.options.every(o => o && typeof o.id === 'string' && typeof o.text === 'string' && o.text.length <= 200 &&
-          typeof o.outcome === 'string' && o.outcome.length <= 1000 && (o.goto === undefined || typeof o.goto === 'string')))));
+          typeof o.outcome === 'string' && o.outcome.length <= 1000 && (o.goto === undefined || typeof o.goto === 'string'))))));
 }
 
 /**
@@ -343,6 +398,9 @@ export function resizePlan(plan: Plan, cols: number, rows: number, anchor: [numb
       ...p,
       terrain: Array.from({ length: rows }, (_, y) => Array.from({ length: cols }, (_, x) => p.terrain[y - dy]?.[x - dx] ?? fill)),
       entities: p.entities.map(e => clampEntity({ ...e, x: e.x + dx, y: e.y + dy }, next)),
+      // Move destinations shift with the map and stay inside it.
+      conversations: p.conversations.map(c => ({ ...c, lines: c.lines.map(l => isAction(l) && l.action.kind === 'move'
+        ? { ...l, action: { ...l.action, x: Math.max(0, Math.min(cols - 1, l.action.x + dx)), y: Math.max(0, Math.min(rows - 1, l.action.y + dy)) } } : l) })),
     })),
   };
 }

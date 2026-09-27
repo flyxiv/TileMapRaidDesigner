@@ -1,7 +1,7 @@
 'use client';
-import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Footprints, Hand, RotateCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { isMechanic, lineCount, mechanicTone, scriptOf, triggerLabel, mechanicTypes, type MechanicKind, type Plan } from '../plan';
+import { actionText, faceRotation, isAction, stagePhase, isMechanic, lineCount, mechanicTone, scriptOf, triggerLabel, mechanicTypes, type MechanicKind, type Plan } from '../plan';
 import { BattleMap } from './BattleMap';
 import { Glyph } from './glyphs';
 import { speakerColor } from './StoryPanel';
@@ -48,8 +48,15 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
     return () => window.removeEventListener('keydown', onKey);
   }, [index, line, script.length, onExit, onIndex, plan.phases]);
 
-  const current = script[line]?.line;
+  const step = script[line]?.step;
+  const current = step && !isAction(step) ? step : undefined;
   const currentConversation = script[line]?.conversation;
+  // Actions play as you step: the map shows the scene after every earlier action, and previews the current one.
+  const staged = stagePhase(phase, plan, script.slice(0, line).map(s => s.step).filter(isAction));
+  const stagedPlan = staged === phase ? plan : { ...plan, phases: plan.phases.map((p, i) => i === index ? staged : p) };
+  const acting = step && isAction(step) ? step : undefined;
+  const actor = acting && staged.entities.find(e => e.id === acting.actor);
+  const stageMark = acting && actor ? { step: acting, from: actor, text: actionText(acting, phase), rotation: faceRotation(acting, staged.entities) } : null;
   const speech = current && currentConversation ? {
     speaker: current.speaker, text: current.text, options: current.options.map(o => o.text), placement: current.placement,
     turnLabel: [currentConversation.title, triggerLabel(currentConversation.trigger, phase)].filter(Boolean).join(' · ').toUpperCase(),
@@ -78,7 +85,12 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
                 <div key={c.id} className="script-conversation">
                   <div className="script-conversation-head"><span className="script-turn">{triggerLabel(c.trigger, phase).toUpperCase()}</span><b>{c.title || `Conversation ${ci + 1}`}</b></div>
                   {c.lines.map(l => {
-                    const li = script.findIndex(s => s.line.id === l.id);
+                    const li = script.findIndex(s => s.step.id === l.id);
+                    if (isAction(l)) return (
+                      <div key={l.id} className={`script-action${li === line ? ' active' : ''}`} onClick={() => setCursor({ phase: index, line: li })}>
+                        {(() => { const Icon = { motion: Hand, face: RotateCw, move: Footprints }[l.action.kind]; return <Icon size={14} aria-hidden="true" />; })()}<i>{actionText(l, phase)}</i>
+                      </div>
+                    );
                     const pick = l.options.find(o => o.id === chosen[l.id]);
                     const target = pick?.goto ? plan.phases.findIndex(p => p.id === pick.goto) : -1;
                     return (
@@ -121,7 +133,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
           )}
         </section>
         <section className="present-stage" ref={stage} aria-label="Battle map">
-          <BattleMap plan={plan} phaseIndex={index} cell={cell} speech={speech} />
+          <BattleMap plan={stagedPlan} phaseIndex={index} cell={cell} speech={speech} stage={stageMark} />
         </section>
       </div>
       <footer className="present-controls">

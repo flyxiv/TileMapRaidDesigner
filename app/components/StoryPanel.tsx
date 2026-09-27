@@ -1,7 +1,7 @@
 'use client';
-import { ArrowDown, ArrowUp, GripVertical, MessageSquare, PanelTop, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Crosshair, Footprints, GripVertical, Hand, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
-import { createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -12,6 +12,9 @@ type Props = {
   activeLineId: string | null;
   onActivate: (id: string) => void;
   onChange: (fn: (conversations: Conversation[]) => Conversation[], coalesceKey?: string) => void;
+  /** Asks the editor for the next tile clicked on the map; `null` while no pick is pending. */
+  onPickTile: (apply: ((tile: [number, number]) => void) | null) => void;
+  pickingFor: string | null;
 };
 
 /** Role color for a speaker whose name matches a unit in the phase. */
@@ -165,7 +168,7 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPickTile, pickingFor }: Props) {
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
 
@@ -209,34 +212,141 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
               onChange={e => patchConversation(c.id, x => ({ ...x, title: e.target.value }), `title-${c.id}`)} />
             <div className="story-tools">
               <button type="button" className="icon-button danger" aria-label="Delete conversation"
-                onClick={() => { if (c.lines.every(l => !l.text) || confirm(`Delete "${c.title || `Conversation ${ci + 1}`}" and its ${c.lines.length} line${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
+                onClick={() => { if (c.lines.every(l => !isAction(l) && !l.text) || confirm(`Delete "${c.title || `Conversation ${ci + 1}`}" and its ${c.lines.length} step${c.lines.length > 1 ? 's' : ''}?`)) onChange(cs => cs.filter(x => x.id !== c.id)); }}>
                 <Trash2 size={13} />
               </button>
             </div>
           </header>
           <TriggerFields phase={phase} trigger={c.trigger} onChange={(t, key) => patchConversation(c.id, x => ({ ...x, trigger: t }), key && `${key}-${c.id}`)} />
           <ol ref={lineDrag.listRef(c.id)} className={`conversation-lines${lineDrag.listClass(c)}`}>
-            {c.lines.map((l, li) => (
-              <LineCard key={l.id} phase={phase} plan={plan} phaseIndex={phaseIndex} line={l} index={li} count={c.lines.length} active={l.id === activeLineId}
-                liRef={lineDrag.lineRef(l.id)} dragClass={lineDrag.lineClass(c, l.id)} handleProps={lineDrag.handleProps(c.id, li, l.id)}
-                onActivate={() => onActivate(l.id)}
-                onChange={(fn, key) => patchConversation(c.id, x => ({ ...x, lines: x.lines.map(y => y.id === l.id ? fn(y) : y) }), key)}
-                onMove={by => patchConversation(c.id, x => ({ ...x, lines: swap(x.lines, li, li + by) }))}
-                onDelete={() => patchConversation(c.id, x => ({ ...x, lines: x.lines.filter(y => y.id !== l.id) }))} />
-            ))}
+            {c.lines.map((l, li) => {
+              const common = {
+                phase, index: li, count: c.lines.length, active: l.id === activeLineId,
+                liRef: lineDrag.lineRef(l.id), dragClass: lineDrag.lineClass(c, l.id), handleProps: lineDrag.handleProps(c.id, li, l.id),
+                onActivate: () => onActivate(l.id),
+                onMove: (by: number) => patchConversation(c.id, x => ({ ...x, lines: swap(x.lines, li, li + by) })),
+                onDelete: () => patchConversation(c.id, x => ({ ...x, lines: x.lines.filter(y => y.id !== l.id) })),
+              };
+              const change = <T extends ConversationStep,>(fn: (s: T) => T, key?: string) => patchConversation(c.id, x => ({ ...x, lines: x.lines.map(y => y.id === l.id ? fn(y as T) : y) }), key);
+              return isAction(l)
+                ? <ActionCard key={l.id} {...common} plan={plan} step={l} onChange={change}
+                    picking={pickingFor === l.id} onPick={() => pickingFor === l.id ? onPickTile(null) : onPickTile(([x, y]) => change<ActionStep>(st => ({ ...st, action: { kind: 'move', x, y } })))} />
+                : <LineCard key={l.id} {...common} plan={plan} phaseIndex={phaseIndex} line={l} onChange={change} />;
+            })}
           </ol>
-          <button type="button" className="text-button" onClick={() => {
-            // Follow-up lines default to whoever spoke last in this conversation.
-            const line = createLine(c.lines[c.lines.length - 1]?.speaker ?? defaultSpeaker);
-            patchConversation(c.id, x => ({ ...x, lines: [...x.lines, line] }));
-            onActivate(line.id);
-          }}><Plus size={12} /> Add line</button>
+          <div className="conversation-add">
+            <button type="button" className="text-button" onClick={() => {
+              // Follow-up lines default to whoever spoke last in this conversation.
+              const line = createLine(lastSpeaker(c) ?? defaultSpeaker);
+              patchConversation(c.id, x => ({ ...x, lines: [...x.lines, line] }));
+              onActivate(line.id);
+            }}><Plus size={12} /> Add line</button>
+            <button type="button" className="text-button" onClick={() => {
+              // Actions default to the last speaker's unit, so "says something, then turns" is quick.
+              const units = phase.entities.filter(e => isUnit(e.kind));
+              const actor = units.find(u => u.name === lastSpeaker(c)) ?? units.find(u => u.name === defaultSpeaker) ?? units[0];
+              if (!actor) return;
+              const step = createAction(actor.id);
+              patchConversation(c.id, x => ({ ...x, lines: [...x.lines, step] }));
+              onActivate(step.id);
+            }}><Plus size={12} /> Add action</button>
+          </div>
         </section>
         </Fragment>
       ))}
       {zone(conversations.length)}
       <button type="button" className="button story-add" onClick={addConversation}><Plus size={14} /> New conversation</button>
     </div>
+  );
+}
+
+/** The speaker of the conversation's most recent spoken line. */
+const lastSpeaker = (c: Conversation) => [...c.lines].reverse().find((l): l is DialogueLine => !isAction(l))?.speaker;
+
+/** Units in the phase grouped like the toolbox, for pickers. */
+function UnitOptions({ phase, exclude }: { phase: Phase; exclude?: string }) {
+  return <>
+    {(Object.keys(unitCategories) as UnitCategory[]).map(cat => {
+      const units = phase.entities.filter(e => isUnit(e.kind) && e.id !== exclude && unitTypes[e.kind as UnitKind].category === cat);
+      return units.length > 0 && <optgroup key={cat} label={unitCategories[cat].name}>{units.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</optgroup>;
+    })}
+  </>;
+}
+
+const actionIcons = { motion: Hand, face: RotateCw, move: Footprints };
+
+type ActionProps = {
+  plan: Plan; phase: Phase; step: ActionStep; index: number; count: number; active: boolean; picking: boolean;
+  onActivate: () => void;
+  onChange: (fn: (s: ActionStep) => ActionStep, coalesceKey?: string) => void;
+  onPick: () => void;
+  onMove: (by: number) => void;
+  onDelete: () => void;
+  liRef: (el: HTMLElement | null) => void;
+  dragClass: string;
+  handleProps: React.HTMLAttributes<HTMLElement>;
+};
+
+function ActionCard({ plan, phase, step, index, count, active, picking, onActivate, onChange, onPick, onMove, onDelete, liRef, dragClass, handleProps }: ActionProps) {
+  const a = step.action;
+  const actor = phase.entities.find(e => e.id === step.actor);
+  const setAction = (action: StageAction, key?: string) => onChange(s => ({ ...s, action }), key && `${key}-${step.id}`);
+  const setKind = (kind: StageAction['kind']) => setAction(
+    kind === 'motion' ? { kind, motion: '' } : kind === 'face' ? { kind, rotation: actor?.rotation ?? 0 } : { kind, x: actor?.x ?? 0, y: actor?.y ?? 0 });
+  const Icon = actionIcons[a.kind];
+  return (
+    <li ref={liRef} className={`story-line action${active ? ' active' : ''}${dragClass}`} onFocusCapture={onActivate} onPointerDown={onActivate} style={{ '--speaker': actor ? unitTypes[actor.kind as UnitKind]?.color ?? '#c6b3ff' : '#c6b3ff' } as React.CSSProperties}>
+      <span className="line-grip" title="Drag to move this step, into another conversation, or out into a new one" aria-hidden="true" {...handleProps}><GripVertical size={12} /></span>
+      <div className="story-line-top">
+        <span className="line-number action-number" title="Action"><Icon size={11} /></span>
+        <select aria-label="Who acts" className="story-speaker" value={step.actor} onChange={e => onChange(s => ({ ...s, actor: e.target.value }))}>
+          {!actor && <option value={step.actor}>Removed unit</option>}
+          <UnitOptions phase={phase} />
+        </select>
+      </div>
+      <div className="placement" role="group" aria-label="Action">
+        <span>Does</span>
+        {(Object.keys(actionKinds) as StageAction['kind'][]).map(k => {
+          const KIcon = actionIcons[k];
+          return <button key={k} type="button" aria-pressed={a.kind === k} onClick={() => a.kind !== k && setKind(k)}><KIcon size={12} /> {actionKinds[k]}</button>;
+        })}
+      </div>
+      {a.kind === 'motion' && <>
+        <input aria-label="Motion" className="story-custom" value={a.motion} maxLength={120} placeholder="What do they do? e.g. raises sword" onChange={e => setAction({ ...a, motion: e.target.value }, 'motion')} />
+        <div className="motion-presets">
+          {motionPresets.map(m => <button key={m} type="button" aria-pressed={a.motion === m} onClick={() => setAction({ ...a, motion: m })}>{m}</button>)}
+        </div>
+      </>}
+      {a.kind === 'face' && (
+        <select aria-label="Turn to" value={a.toward ? `unit:${a.toward}` : `dir:${a.rotation}`}
+          onChange={e => { const [t, v] = e.target.value.split(':'); setAction(t === 'unit' ? { ...a, toward: v } : { kind: 'face', rotation: Number(v) }); }}>
+          <optgroup label="Face a direction">{[0, 45, 90, 135, 180, 225, 270, 315].map(d => <option key={d} value={`dir:${d}`}>Face {compassName(d)}</option>)}</optgroup>
+          {(Object.keys(unitCategories) as UnitCategory[]).map(cat => {
+            const units = phase.entities.filter(e => isUnit(e.kind) && e.id !== step.actor && unitTypes[e.kind as UnitKind].category === cat);
+            return units.length > 0 && <optgroup key={cat} label={`Turn toward (${unitCategories[cat].name.toLowerCase()})`}>{units.map(e => <option key={e.id} value={`unit:${e.id}`}>{e.name}</option>)}</optgroup>;
+          })}
+        </select>
+      )}
+      {a.kind === 'move' && (
+        <div className="move-fields">
+          <span>To</span>
+          <select aria-label="Column" value={a.x} onChange={e => setAction({ ...a, x: Number(e.target.value) })}>
+            {Array.from({ length: plan.cols }, (_, x) => <option key={x} value={x}>{tileLabel(x, 0).replace(/\d+$/, '')}</option>)}
+          </select>
+          <select aria-label="Row" value={a.y} onChange={e => setAction({ ...a, y: Number(e.target.value) })}>
+            {Array.from({ length: plan.rows }, (_, y) => <option key={y} value={y}>{y + 1}</option>)}
+          </select>
+          <button type="button" className={`pick-button${picking ? ' active' : ''}`} aria-pressed={picking} title="Pick the destination on the map" onClick={onPick}><Crosshair size={12} /> {picking ? 'Click map…' : 'Pick'}</button>
+        </div>
+      )}
+      <div className="story-line-bottom">
+        <div className="story-tools">
+          <button type="button" className="icon-button" aria-label="Move step up" disabled={index === 0} onClick={() => onMove(-1)}><ArrowUp size={13} /></button>
+          <button type="button" className="icon-button" aria-label="Move step down" disabled={index === count - 1} onClick={() => onMove(1)}><ArrowDown size={13} /></button>
+          <button type="button" className="icon-button danger" aria-label="Delete action" onClick={onDelete}><Trash2 size={13} /></button>
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -286,8 +396,8 @@ function LineCard({ plan, phase, phaseIndex, line: l, index, count, active, onAc
       )}
       <div className="placement" role="group" aria-label="Show on map">
         <span>Show</span>
-        <button type="button" aria-pressed={(l.placement ?? 'unit') === 'unit'} onClick={() => patch({ placement: 'unit' })}><MessageSquare size={12} /> On speaker</button>
-        <button type="button" aria-pressed={l.placement === 'top'} onClick={() => patch({ placement: 'top' })}><PanelTop size={12} /> Top banner</button>
+        <button type="button" aria-pressed={(l.placement ?? 'unit') === 'unit'} onClick={() => patch({ placement: 'unit' })}><MessageSquare size={12} /> Speak</button>
+        <button type="button" aria-pressed={l.placement === 'top'} onClick={() => patch({ placement: 'top' })}><PanelTop size={12} /> Banner</button>
       </div>
       <textarea aria-label="Line" rows={2} value={l.text} maxLength={2000} placeholder="What do they say?" onChange={e => patch({ text: e.target.value }, 'text')} />
       {l.options.map((o, oi) => (

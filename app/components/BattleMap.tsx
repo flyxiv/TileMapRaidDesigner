@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { aims, mechanicTypes, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -26,6 +26,8 @@ type Props = {
   highlight?: { x: number; y: number; size: number } | null;
   /** Show resize and rotate handles on the selected unit or telegraph. */
   transform?: boolean;
+  /** Action step to preview: `from` is the actor as it stands before the action plays. */
+  stage?: { step: ActionStep; from: Entity; text: string; rotation?: number } | null;
   /** Dialogue line to show as a bubble over its speaker. */
   speech?: Speech | null;
   onPointer?: (p: MapPointer) => void;
@@ -41,7 +43,7 @@ const terrainFill: Record<string, string> = {
 };
 
 export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
-  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, transform, onPointer, onLeave, onDragTile, onDropTile, className }, ref,
+  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, stage, transform, onPointer, onLeave, onDragTile, onDropTile, className }, ref,
 ) {
   const phase = plan.phases[phaseIndex];
   const prev = phaseIndex > 0 ? plan.phases[phaseIndex - 1] : null;
@@ -158,6 +160,8 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
         {units.map(u => <UnitToken key={u.id} u={u} C={C} />)}
 
         {transform && selected && <TransformBox e={selected} entities={phase.entities} C={C} />}
+
+        {stage && <StageMarker stage={stage} C={C} />}
 
         {speech && <SpeechBubble speech={speech} units={units} C={C} mapWidth={plan.cols * C} gutter={G} />}
 
@@ -323,6 +327,44 @@ function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: nu
       <Grip x={cx - half} y={cy + half} id={e.id} kind="sw" />
       <Grip x={cx + half} y={cy + half} id={e.id} kind="se" />
       {rotates && <Grip x={hx} y={hy} id={e.id} kind="rotate" />}
+    </g>
+  );
+}
+
+const STAGE = '#c6b3ff';
+
+/** Preview of an action step: where the actor walks, which way it turns, or what it does, with a caption. */
+function StageMarker({ stage, C }: { stage: { step: ActionStep; from: Entity; text: string; rotation?: number }; C: number }) {
+  const { step, from, text } = stage, a = step.action;
+  const size = footprint(from) * C, half = size / 2;
+  const [cx, cy] = center(from).map(v => v * C);
+  const head = Math.max(5, C * 0.22);
+  let marks = null;
+  if (a.kind === 'move') {
+    const tx = (a.x + footprint(from) / 2) * C, ty = (a.y + footprint(from) / 2) * C;
+    const len = Math.hypot(tx - cx, ty - cy);
+    if (len > 1) {
+      const ux = (tx - cx) / len, uy = (ty - cy) / len, edge = half / Math.max(Math.abs(ux), Math.abs(uy));
+      const ar = arrow(cx + ux * edge, cy + uy * edge, tx - ux * (edge + 2), ty - uy * (edge + 2), head);
+      marks = <>
+        <rect x={a.x * C + 2} y={a.y * C + 2} width={size - 4} height={size - 4} rx={Math.max(3, C * 0.14)} fill="rgba(198,179,255,0.12)" stroke={STAGE} strokeWidth="1.5" strokeDasharray="4 3" />
+        <path d={ar.line} stroke={STAGE} strokeWidth="2" strokeLinecap="round" /><path d={ar.head} fill={STAGE} />
+      </>;
+    }
+  } else if (a.kind === 'face' && stage.rotation !== undefined) {
+    const t = (stage.rotation * Math.PI) / 180, ux = Math.sin(t), uy = -Math.cos(t), edge = half / Math.max(Math.abs(ux), Math.abs(uy));
+    const ar = arrow(cx + ux * (edge + 3), cy + uy * (edge + 3), cx + ux * (edge + C * 1.2), cy + uy * (edge + C * 1.2), head);
+    marks = <><path d={ar.line} stroke={STAGE} strokeWidth="2" strokeLinecap="round" /><path d={ar.head} fill={STAGE} /></>;
+  }
+  const w = Math.min(260, text.length * 6 + 20), capY = from.y * C - (footprint(from) > 1 && C >= 22 ? 30 : 8);
+  return (
+    <g pointerEvents="none">
+      <rect x={cx - half - 3} y={cy - half - 3} width={size + 6} height={size + 6} rx={Math.max(4, C * 0.18)} fill="none" stroke={STAGE} strokeWidth="1.5" />
+      {marks}
+      <g transform={`translate(${cx - w / 2} ${capY - 20})`}>
+        <rect width={w} height={20} rx={10} fill="rgba(15,19,20,0.92)" stroke={STAGE} />
+        <text x={w / 2} y={10.5} textAnchor="middle" dominantBaseline="central" fontSize="10.5" fontStyle="italic" fontWeight="600" fill={STAGE}>{text}</text>
+      </g>
     </g>
   );
 }

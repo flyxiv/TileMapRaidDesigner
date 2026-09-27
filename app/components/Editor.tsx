@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  MAX_UNIT_SIZE, aims, center, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  MAX_UNIT_SIZE, aims, center, actionText, faceRotation, isAction, stagePhase, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -75,6 +75,8 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const [resizing, setResizing] = useState(false);
   const [panel, setPanel] = useState<'details' | 'story'>('details');
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
+  /** A Story tab action waiting for a tile click (a move destination). */
+  const [picking, setPicking] = useState<{ id?: string; apply: (tile: [number, number]) => void } | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const lastEdit = useRef<{ key: string; at: number } | null>(null);
   const presentRef = useRef(hist.present);
@@ -201,6 +203,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       return;
     }
     const tile = p.tile;
+    if (picking) { if (tile) { picking.apply(tile); setPicking(null); } return; }
     const hit = p.entityId ? phase.entities.find(e => e.id === p.entityId) : tile ? entityAt(phase, ...tile) : undefined;
     switch (tool.type) {
       case 'select': {
@@ -262,7 +265,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     setPhaseIndex(pi + 1);
   };
   const duplicatePhase = () => {
-    const copy: Phase = { ...phase, id: uid('phase'), name: `${phase.name} (copy)`, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })), conversations: phase.conversations.map(c => ({ ...c, id: uid('conv'), lines: c.lines.map(l => ({ ...l, id: uid('line'), options: l.options.map(o => ({ ...o, id: uid('opt') })) })) })) };
+    const copy: Phase = { ...phase, id: uid('phase'), name: `${phase.name} (copy)`, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })), conversations: phase.conversations.map(c => ({ ...c, id: uid('conv'), lines: c.lines.map(l => isAction(l) ? { ...l, id: uid('act') } : { ...l, id: uid('line'), options: l.options.map(o => ({ ...o, id: uid('opt') })) }) })) };
     commit(p => ({ ...p, phases: [...p.phases.slice(0, pi + 1), copy, ...p.phases.slice(pi + 1)] }));
     setPhaseIndex(pi + 1);
   };
@@ -310,6 +313,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && k === 'y') { e.preventDefault(); redo(); return; }
       if (mod) return;
+      if (k === 'escape' && picking) { setPicking(null); return; }
       if (k === 'v' || k === 'escape') { setTool({ type: 'select' }); if (k === 'escape') { setSelectedId(null); setShortcuts(false); setMenu(false); } }
       else if (k === 'e') setTool({ type: 'erase' });
       else if (k === 'r' && selected && isUnit(selected.kind)) patchEntity(selected.id, { rotation: (selected.rotation + (e.shiftKey ? 315 : 45)) % 360 }, `rotate-${selected.id}`);
@@ -342,13 +346,23 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const units = phase.entities.filter(e => isUnit(e.kind));
   const moveCount = prevPhase ? units.filter(u => { const b = prevPhase.entities.find(e => e.id === u.id); return b && (b.x !== u.x || b.y !== u.y); }).length : 0;
   // While the Story tab is open, the line being edited shows as a bubble over its speaker.
+  // Actions preview from where earlier actions in the phase leave the actor.
   const script = scriptOf(phase);
-  const active = script.find(s => s.line.id === activeLineId) ?? script[0];
-  const activeLine = active?.line;
-  const speech = panel === 'story' && active ? {
-    speaker: active.line.speaker, text: active.line.text, options: active.line.options.map(o => o.text), placement: active.line.placement,
+  const activeIndex = Math.max(0, script.findIndex(s => s.step.id === activeLineId));
+  const active = script[activeIndex];
+  const activeLine = active?.step;
+  const spoken = panel === 'story' && active && !isAction(active.step) ? active.step : null;
+  const speech = spoken && active ? {
+    speaker: spoken.speaker, text: spoken.text, options: spoken.options.map(o => o.text), placement: spoken.placement,
     turnLabel: [active.conversation.title, triggerLabel(active.conversation.trigger, phase)].filter(Boolean).join(' · ').toUpperCase(),
   } : null;
+  const acting = panel === 'story' && active && isAction(active.step) ? active.step : null;
+  const stage = (() => {
+    if (!acting) return null;
+    const before = stagePhase(phase, plan, script.slice(0, activeIndex).map(s => s.step).filter(isAction));
+    const from = before.entities.find(e => e.id === acting.actor);
+    return from ? { step: acting, from, text: actionText(acting, phase), rotation: faceRotation(acting, before.entities) } : null;
+  })();
   const isTool = (t: Tool) => JSON.stringify(t) === JSON.stringify(tool);
 
   return (
@@ -451,7 +465,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
               <button type="button" className="icon-button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!hist.future.length} onClick={redo}><Redo2 size={16} /></button>
             </div>
             <div className="toolbar-center">
-              <span>Tool: <b>{toolLabel}</b></span>
+              {picking ? <span><b>Click a tile to set where they move</b> · Esc to cancel</span> : <span>Tool: <b>{toolLabel}</b></span>}
               {hover && phase.terrain[hover[1]]?.[hover[0]] && <><i>·</i><span>Tile <b>{tileLabel(...hover)}</b> {terrainTypes[phase.terrain[hover[1]][hover[0]]].name}</span></>}
             </div>
             <div className="toolbar-group">
@@ -461,12 +475,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             </div>
           </div>
 
-          <div ref={viewportRef} className={`map-viewport tool-${tool.type}`}>
+          <div ref={viewportRef} className={`map-viewport tool-${tool.type}${picking ? ' picking' : ''}`}>
             <div className="map-scroll">
               <BattleMap
                 ref={mapRef} className="battlemap" plan={plan} phaseIndex={pi} cell={cell} selectedId={selectedId}
                 showMoves={layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
-                highlight={highlight} speech={speech} transform={tool.type === 'select'} onPointer={onPointer} onLeave={() => setHover(null)}
+                highlight={highlight} speech={speech} stage={stage} transform={tool.type === 'select'} onPointer={onPointer} onLeave={() => setHover(null)}
                 onDragTile={t => dragItem && setHover(t)} onDropTile={t => { if (dragItem) spawn(dragItem, t); setDragItem(null); }}
               />
             </div>
@@ -516,6 +530,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 plan={plan} phaseIndex={pi} activeLineId={activeLine?.id ?? null} onActivate={setActiveLineId}
                 defaultSpeaker={(selected && isUnit(selected.kind) ? selected : phase.entities.find(e => e.kind === 'boss'))?.name ?? 'Narrator'}
                 onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, conversations: fn(f.conversations) })), key)}
+                pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}
               />
             </div>
           ) : <div id="panel-details" role="tabpanel" aria-labelledby="tab-details" className="details-panel">
