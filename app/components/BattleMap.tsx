@@ -32,6 +32,8 @@ type Props = {
   speech?: Speech | null;
   onPointer?: (p: MapPointer) => void;
   onLeave?: () => void;
+  /** Right-click on a unit or telegraph (screen position for a menu). */
+  onEntityMenu?: (id: string, x: number, y: number) => void;
   /** Drag-and-drop from outside the map: the tile under the cursor while dragging (null when it leaves), and the drop tile. */
   onDragTile?: (tile: [number, number] | null) => void;
   onDropTile?: (tile: [number, number]) => void;
@@ -43,7 +45,7 @@ const terrainFill: Record<string, string> = {
 };
 
 export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
-  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, stage, transform, onPointer, onLeave, onDragTile, onDropTile, className }, ref,
+  { plan, phaseIndex, cell: C, coords = true, showMoves = true, showTerrain = true, showTelegraphs = true, selectedId, highlight, speech, stage, transform, onPointer, onLeave, onEntityMenu, onDragTile, onDropTile, className }, ref,
 ) {
   const phase = plan.phases[phaseIndex];
   const prev = phaseIndex > 0 ? plan.phases[phaseIndex - 1] : null;
@@ -93,6 +95,10 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
       ref={ref} className={className} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img"
       aria-label={`${plan.name}, phase ${phaseIndex + 1}: ${phase.name}`}
       onPointerDown={handle('down')} onPointerMove={handle('move')} onPointerUp={handle('up')} onPointerLeave={onLeave}
+      onContextMenu={onEntityMenu && (e => {
+        const id = (e.target as Element).closest('[data-entity]')?.getAttribute('data-entity');
+        if (id) { e.preventDefault(); onEntityMenu(id, e.clientX, e.clientY); }
+      })}
       onDragOver={onDropTile && ((e: ReactDragEvent<SVGSVGElement>) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; onDragTile?.(toTile(e)); })}
       onDragLeave={onDragTile && (() => onDragTile(null))}
       onDrop={onDropTile && ((e: ReactDragEvent<SVGSVGElement>) => { e.preventDefault(); const t = toTile(e); onDragTile?.(null); if (t) onDropTile(t); })}
@@ -404,18 +410,15 @@ function TargetMark({ u, C, tone }: { u: Entity; C: number; tone: string }) {
   );
 }
 
-/** A unit's head marker, centred above it (above the name tag on large units). */
+/** A unit's head marker, centred on the top edge of its token with a white outline. */
 function HeadMarker({ u, C }: { u: Entity; C: number }) {
   if (!u.marker) return null;
-  const size = Math.max(14, Math.min(24, C * 0.7));
+  const size = Math.max(14, Math.min(26, C * 0.75));
   const [cx] = center(u).map(v => v * C);
-  const top = u.y * C;
-  const nameTag = footprint(u) > 1 && C >= 22 ? 24 : 0;
-  const y = top - nameTag - 3 - size;
+  const edge = u.y * C + 2; // the token's top edge
   return (
     <g pointerEvents="none" className="head-marker">
-      <circle cx={cx} cy={y + size / 2} r={size / 2 + 2} fill="#0f1314" fillOpacity="0.85" />
-      <svg x={cx - size / 2} y={y} width={size} height={size} viewBox="0 0 24 24"><MarkerShape kind={u.marker} /></svg>
+      <svg x={cx - size / 2} y={edge - size * 0.62} width={size} height={size} viewBox="0 0 24 24" overflow="visible"><MarkerShape kind={u.marker} edge="#ffffff" edgeWidth={1.8} /></svg>
     </g>
   );
 }

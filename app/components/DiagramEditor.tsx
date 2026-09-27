@@ -34,6 +34,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
   const [dragItem, setDragItem] = useState<Tool | null>(null);
   const [hover, setHover] = useState<[number, number] | null>(null);
   const gesture = useRef<Gesture | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const plan = diagramPlan(d), phase = plan.phases[0];
   const selected = d.entities.find(e => e.id === selectedId) ?? null;
   const cell = Math.max(12, Math.min(26, Math.floor(540 / (d.cols + 1))));
@@ -45,6 +46,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
 
   const onPointer = (p: MapPointer) => {
     if (p.type === 'up') { gesture.current = null; return; }
+    if (p.type === 'down') sectionRef.current?.focus({ preventScroll: true });
     if (p.type === 'move') {
       setHover(p.tile);
       const g = gesture.current;
@@ -109,7 +111,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
   );
 
   return (
-    <section ref={cardRef} className={`diagram page-block${cardClass}`} aria-label={d.caption || `Map ${index + 1}`}
+    <section ref={el => { sectionRef.current = el; cardRef?.(el); }} tabIndex={-1} className={`diagram page-block${cardClass}`} aria-label={d.caption || `Map ${index + 1}`}
       onKeyDown={e => { if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !(e.target as HTMLElement).closest('input, textarea, select')) { e.preventDefault(); remove(selected.id); } }}>
       <header className="diagram-head">
         {handleProps && <button type="button" className="drag-handle" aria-label={`Reorder ${d.caption || `block ${index + 1}`}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>}

@@ -58,6 +58,8 @@ export type Entity = {
   infinite?: boolean;
   /** Telegraphs only, optional: seconds from the telegraph appearing to it going off. */
   castTime?: number;
+  /** Telegraphs only, optional: the map from its mechanic page shown as the event's image (a diagram id). */
+  image?: string;
   /** Units only, optional: a head marker shown on the unit. */
   marker?: MarkerKind;
   /** Telegraphs only, optional: the units it targets (by id). */
@@ -536,7 +538,7 @@ export function validatePlan(value: unknown): value is Plan {
       (Object.hasOwn(unitTypes, e.kind) || Object.hasOwn(mechanicTypes, e.kind)) &&
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
-      num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.marker === undefined || Object.hasOwn(markerTypes, e.marker)) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
+      num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.image === undefined || (typeof e.image === 'string' && e.image.length <= 80)) && (e.marker === undefined || Object.hasOwn(markerTypes, e.marker)) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
       (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);
   return p.version === 2 && typeof p.name === 'string' && p.name.length <= 120 && int(p.cols, 8, 30) && int(p.rows, 8, 30) &&

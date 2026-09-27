@@ -529,3 +529,22 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .marker-picker { display: flex; flex-wrap: wrap; gap: 4px; }
 .marker-picker button { min-width: 30px; height: 30px; padding: 0 6px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: var(--muted); background: var(--panel-2); border: 1px solid #343b3a; }
 .marker-picker button.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+.diagram:focus { outline: none; }
+.context-menu { position: fixed; right: auto; top: 0; z-index: 70; min-width: 220px; }
+.context-menu button:disabled { opacity: .35; }
+.context-menu button.danger { color: var(--danger); }
+.field-group { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+.field-group-title { font-size: 9px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+.image-picker { display: flex; flex-direction: column; gap: 6px; }
+.image-picker-label { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text-2); }
+.image-picker-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.image-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 96px; padding: 4px; border-radius: 7px; background: transparent; border: 1px solid #2c3334; color: var(--muted); font-size: 10px; cursor: pointer; }
+.image-option > span { max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.image-option .map-preview { border: none; padding: 0; }
+.image-option.live { min-height: 60px; }
+.image-option:hover { border-color: #4a5552; color: var(--text-2); }
+.image-option.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--accent); }
+.field { font-size: 12px; font-weight: 600; color: #b9c6ba; }
+.targets-label { font-size: 12px; font-weight: 600; color: #b9c6ba; }
+.field-group-title { font-size: 10px; }
+.cast-time .unit-input { font-size: 12px; font-weight: 600; color: #b9c6ba; }

@@ -1,5 +1,5 @@
 'use client';
-import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, Crosshair, Footprints, GripVertical, Hand, Image as ImageIcon, MapPin, MessageSquare, PanelTop, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
 import { BattleMap } from './BattleMap';
 import { MapPreviews } from './MapPreview';
@@ -7,7 +7,7 @@ import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
 import { EventIcon } from './EventIcon';
 import { Glyph } from './glyphs';
-import { pageMaps, pageText, scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
+import { diagramPlan, pageMaps, pageText, scriptOf, sceneToDiagram, stagePhase, type Diagram, mechanicTone, mechanicTypes, pageKind, timelineOf, type MechanicKind, type MechanicPage, actionKinds, compassName, createAction, isAction, motionPresets, tileLabel, type ActionStep, type ConversationStep, type Entity, type StageAction, createConversation, createLine, uid, createOption, hpTarget, isMechanic, isUnit, triggerTypes, unitCategories, unitTypes, type Conversation, type DialogueLine, type DialogueOption, type DialogueTrigger, type Phase, type Plan, type UnitCategory, type UnitKind } from '../plan';
 
 type Props = {
   plan: Plan;
@@ -24,6 +24,8 @@ type Props = {
   onMechanic: (id: string, patch: Partial<Entity>, coalesceKey?: string) => void;
   onSelectMechanic: (id: string) => void;
   onDeleteMechanic: (id: string) => void;
+  /** Right-click on a telegraph's card. */
+  onMechanicMenu?: (id: string, x: number, y: number) => void;
   onCreatePage: (title: string) => string;
   onOpenPage: (id: string) => void;
   /** Copy a map into a mechanic page's Maps (`null` makes a new page for it). */
@@ -191,7 +193,7 @@ function useLineDrag(conversations: Conversation[], onDrop: (from: { conv: strin
   };
 }
 
-export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onDeleteMechanic, onCreatePage, onOpenPage, onNewMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, renderMechanicMap, start }: Props) {
+export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onActivate, onChange, onPhase, onMechanic, onSelectMechanic, onDeleteMechanic, onMechanicMenu, onCreatePage, onOpenPage, onNewMechanic, onSaveDiagram, onPickTile, pickingFor, wide, renderMap, renderMechanicMap, start }: Props) {
   const [mechanicMenu, setMechanicMenu] = useState(false);
   const phase = plan.phases[phaseIndex];
   const conversations = phase.conversations;
@@ -240,7 +242,8 @@ export function StoryPanel({ plan, phaseIndex, defaultSpeaker, activeLineId, onA
           {zone(ci)}
           <MechanicItem m={item.mechanic} phase={phase} pages={plan.pages} cardRef={reorder.cardRef(ci)} cardClass={reorder.cardClass(ci)} handleProps={reorder.handleProps(ci)}
             onChange={(patch, key) => onMechanic(item.id, patch, key)} onSelect={() => onSelectMechanic(item.id)} onDelete={() => onDeleteMechanic(item.id)}
-            onCreatePage={onCreatePage} onOpenPage={onOpenPage} map={renderMechanicMap?.(item.mechanic)} />
+            onCreatePage={onCreatePage} onOpenPage={onOpenPage} map={renderMechanicMap?.(item.mechanic)}
+            onMenu={onMechanicMenu && ((x, y) => onMechanicMenu(item.id, x, y))} />
         </Fragment>
       ) : (c => (
         <Fragment key={c.id}>
@@ -548,14 +551,19 @@ function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase;
 }
 
 /** A telegraph in the timeline: when it goes off, and the mechanic page that explains it. */
-function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onDelete, onCreatePage, onOpenPage, map }: {
+function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChange, onSelect, onDelete, onCreatePage, onOpenPage, map, onMenu }: {
   m: Entity; phase: Phase; pages: MechanicPage[]; cardRef: (el: HTMLElement | null) => void; cardClass: string; handleProps: React.HTMLAttributes<HTMLElement>;
-  onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onDelete: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void; map?: React.ReactNode;
+  onChange: (patch: Partial<Entity>, coalesceKey?: string) => void; onSelect: () => void; onDelete: () => void; onCreatePage: (title: string) => string; onOpenPage: (id: string) => void; map?: React.ReactNode; onMenu?: (x: number, y: number) => void;
 }) {
   const page = pages.find(g => g.id === m.page);
+  const image = page && m.image ? pageMaps(page).find(d => d.id === m.image) : undefined;
   const tone = mechanicTone(m);
   return (
-    <section ref={cardRef} data-timeline-id={m.id} className={`conversation mechanic-item${cardClass}`} style={{ '--tone': tone } as React.CSSProperties} aria-label={`Mechanic: ${m.name}`}>
+    <section ref={cardRef} data-timeline-id={m.id} onContextMenu={onMenu && (e => {
+      // Keep the browser menu for text fields; the card's menu everywhere else.
+      if ((e.target as HTMLElement).closest('input, textarea, select')) return;
+      e.preventDefault(); onMenu(e.clientX, e.clientY);
+    })} className={`conversation mechanic-item${cardClass}`} style={{ '--tone': tone } as React.CSSProperties} aria-label={`Mechanic: ${m.name}`}>
       <div className="conv-main">
       <header className="conversation-head">
         <button type="button" className="drag-handle" aria-label={`Reorder ${m.name}`} title="Drag to reorder (or focus and use the arrow keys)" {...handleProps}><GripVertical size={15} /></button>
@@ -572,7 +580,7 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
         <BookOpen size={13} />
         <select aria-label="Mechanic page" value={page ? page.id : ''} onChange={e => {
           const v = e.target.value;
-          onChange({ page: v === '__new' ? onCreatePage(m.name) : v || undefined });
+          onChange({ page: v === '__new' ? onCreatePage(m.name) : v || undefined, image: undefined });
         }}>
           <option value="">No mechanic page</option>
           {pages.map(g => <option key={g.id} value={g.id}>{g.title || 'Untitled page'}</option>)}
@@ -581,9 +589,37 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
         {page && <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open</button>}
       </div>
       {page && pageText(page) && <p className="page-excerpt">{pageText(page).length > 160 ? `${pageText(page).slice(0, 160)}…` : pageText(page)}</p>}
-      {page && <MapPreviews diagrams={pageMaps(page)} width={120} captions />}
+      {page && pageMaps(page).length > 0 && (
+        <div className="image-picker" role="radiogroup" aria-label="Event image">
+          <span className="image-picker-label"><ImageIcon size={13} aria-hidden="true" /> Event image</span>
+          <div className="image-picker-options">
+            <button type="button" role="radio" aria-checked={!image} className={`image-option live${!image ? ' on' : ''}`} onClick={() => onChange({ image: undefined })}>
+              <MapPin size={16} /><span>This moment's map</span>
+            </button>
+            {pageMaps(page).map((d, i) => (
+              <button key={d.id} type="button" role="radio" aria-checked={image?.id === d.id} title={d.caption || `Map ${i + 1}`}
+                className={`image-option${image?.id === d.id ? ' on' : ''}`} onClick={() => onChange({ image: d.id })}>
+                <MapPreviews diagrams={[d]} width={96} max={1} />
+                <span>{d.caption || `Map ${i + 1}`}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
-      {map && <div className="conv-side">{map}</div>}
+      {image && page ? (
+        <div className="conv-side">
+          <div className="timeline-map">
+            <div className="timeline-map-head">
+              <span>From “{page.title || 'Untitled page'}” · {image.caption || 'Map'}</span>
+              <button type="button" className="text-button" onClick={() => onOpenPage(page.id)}>Open page</button>
+            </div>
+            <div className="timeline-map-canvas">
+              <BattleMap plan={diagramPlan(image)} phaseIndex={0} cell={Math.max(10, Math.min(24, Math.floor(420 / (image.cols + 1))))} coords={false} showMoves={false} />
+            </div>
+          </div>
+        </div>
+      ) : map && <div className="conv-side">{map}</div>}
     </section>
   );
 }

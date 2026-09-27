@@ -129,63 +129,85 @@ function Slider({ label, value, unit, min, max, step, onChange }: { label: strin
   );
 }
 
+/** A titled group of settings; groups are separated by divider lines. */
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="field-group" aria-label={title}><div className="field-group-title">{title}</div>{children}</section>;
+}
+
 function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase; m: Entity; onChange: Props['onChange'] }) {
   const tone = mechanicTone(m);
   const show = mechanicFields(m.kind);
   const anchor = m.anchor ? phase.entities.find(e => e.id === m.anchor) : undefined;
+  const aimed = aimedAtTargets(m, phase.entities);
+  const hasSize = show.radius || show.inner || show.width || show.push || show.soak || show.angle;
   return <>
     <Header label="Selected telegraph" title={m.name} sub={`${mechanicTypes[m.kind as MechanicKind].name} · ${mechanicTypes[m.kind as MechanicKind].description}`} kind={m.kind} color={tone} round={false} />
-    <div className="field-grid">
-      <label className="field span-2">Name
-        <input value={m.name} maxLength={120} onChange={ev => onChange({ name: ev.target.value }, `name-${m.id}`)} />
-      </label>
-      <label className="field">Shape
-        <select value={m.kind} onChange={ev => onChange({ kind: ev.target.value as MechanicKind })}>
-          {Object.entries(mechanicTypes).map(([k, t]) => <option key={k} value={k}>{t.name}</option>)}
-        </select>
-      </label>
-    </div>
-    {show.origin && (
-      <label className="field">Starts from
-        <select value={m.anchor ?? ''} onChange={ev => onChange(ev.target.value
-          ? { anchor: ev.target.value, ...(aims(m.kind) && m.followFacing === undefined ? { followFacing: true } : {}) }
-          : { anchor: undefined, followFacing: undefined, ...(anchor ? { x: anchor.x, y: anchor.y, rotation: mechanicFacing(m, phase.entities) } : {}) })}>
-          <option value="">A fixed tile</option>
-          {(Object.keys(unitCategories) as UnitCategory[]).map(cat => {
-            const units = phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === cat);
-            return units.length > 0 && (
-              <optgroup key={cat} label={unitCategories[cat].name}>
-                {units.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </optgroup>
-            );
-          })}
-        </select>
-      </label>
+    <Group title="Mechanic">
+      <div className="field-grid">
+        <label className="field span-2">Name
+          <input value={m.name} maxLength={120} onChange={ev => onChange({ name: ev.target.value }, `name-${m.id}`)} />
+        </label>
+        <label className="field">Shape
+          <select value={m.kind} onChange={ev => onChange({ kind: ev.target.value as MechanicKind })}>
+            {Object.entries(mechanicTypes).map(([k, t]) => <option key={k} value={k}>{t.name}</option>)}
+          </select>
+        </label>
+      </div>
+      {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
+    </Group>
+
+    <Group title="Position">
+      {show.origin && (
+        <label className="field">Starts from
+          <select value={m.anchor ?? ''} onChange={ev => onChange(ev.target.value
+            ? { anchor: ev.target.value, ...(aims(m.kind) && m.followFacing === undefined ? { followFacing: true } : {}) }
+            : { anchor: undefined, followFacing: undefined, ...(anchor ? { x: anchor.x, y: anchor.y, rotation: mechanicFacing(m, phase.entities) } : {}) })}>
+            <option value="">A fixed tile</option>
+            {(Object.keys(unitCategories) as UnitCategory[]).map(cat => {
+              const units = phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === cat);
+              return units.length > 0 && (
+                <optgroup key={cat} label={unitCategories[cat].name}>
+                  {units.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </optgroup>
+              );
+            })}
+          </select>
+        </label>
+      )}
+      {anchor && <p className="hint">Moves with {anchor.name}. Drop a telegraph onto a unit to attach it there.</p>}
+      {show.origin && !anchor && <PositionFields plan={plan} e={m} onChange={onChange} />}
+      {anchor && aims(m.kind) && !aimed && (
+        <label className="check"><input type="checkbox" checked={!!m.followFacing} onChange={ev => onChange({ followFacing: ev.target.checked, ...(ev.target.checked ? {} : { rotation: anchor.rotation }) })} /> Face the way {anchor.name} faces</label>
+      )}
+      {show.facing && !(anchor && m.followFacing) && !aimed && (
+        <label className="field">
+          <span className="field-line">Facing <b>{facingLabel(m.rotation)}</b></span>
+          <input type="range" min={0} max={345} step={15} value={m.rotation} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${m.id}`)} />
+        </label>
+      )}
+      <TargetsField phase={phase} value={m.targets} onChange={v => onChange({ targets: v })} />
+      {aimed && <p className="hint">Aims from its start toward each target, running its full length (through the target).</p>}
+    </Group>
+
+    {hasSize && (
+      <Group title="Size">
+        {show.radius && <>
+          {!m.infinite && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={MAX_RADIUS} step={0.5} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
+          <label className="check"><input type="checkbox" checked={!!m.infinite} onChange={ev => onChange({ infinite: ev.target.checked || undefined })} />
+            Infinite {m.kind === 'line' ? 'length' : 'radius'} <span className="hint">{m.kind === 'cone' || m.kind === 'line' ? '(runs to the edge of the map)' : '(covers the whole arena)'}</span></label>
+        </>}
+        {show.width && <Slider label="Width" value={m.width ?? 1} unit={(m.width ?? 1) === 1 ? 'tile' : 'tiles'} min={1} max={8} step={1} onChange={v => onChange({ width: v }, `width-${m.id}`)} />}
+        {show.angle && <Slider label="Spread" value={m.angle ?? 90} unit="°" min={15} max={360} step={15} onChange={v => onChange({ angle: v }, `angle-${m.id}`)} />}
+        {show.inner && <Slider label="Safe radius" value={m.inner ?? 1} unit="tiles" min={0.5} max={Math.max(0.5, m.radius - 0.5)} step={0.1} onChange={v => onChange({ inner: v }, `inner-${m.id}`)} />}
+        {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
+        {show.soak && <Slider label="Players needed" value={m.soak ?? 1} unit={(m.soak ?? 1) === 1 ? 'player' : 'players'} min={1} max={8} step={1} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
+      </Group>
     )}
-    {anchor && <p className="hint">Moves with {anchor.name}. Drop a telegraph onto a unit to attach it there.</p>}
-    {anchor && aims(m.kind) && (
-      <label className="check"><input type="checkbox" checked={!!m.followFacing} onChange={ev => onChange({ followFacing: ev.target.checked, ...(ev.target.checked ? {} : { rotation: anchor.rotation }) })} /> Face the way {anchor.name} faces</label>
-    )}
-    {show.origin && !anchor && <PositionFields plan={plan} e={m} onChange={onChange} />}
-    {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
-    {aimedAtTargets(m, phase.entities) && <p className="hint">Aims from its start toward each target, running its full length (through the target).</p>}
-    {show.radius && <>
-      {!m.infinite && <Slider label={m.kind === 'line' ? 'Length' : 'Radius'} value={m.radius} unit="tiles" min={1} max={MAX_RADIUS} step={0.5} onChange={v => onChange({ radius: v, ...(m.inner !== undefined && m.inner >= v ? { inner: Math.max(0.5, v - 0.5) } : {}) }, `radius-${m.id}`)} />}
-      <label className="check"><input type="checkbox" checked={!!m.infinite} onChange={ev => onChange({ infinite: ev.target.checked || undefined })} />
-        Infinite {m.kind === 'line' ? 'length' : 'radius'} <span className="hint">{m.kind === 'cone' || m.kind === 'line' ? '(runs to the edge of the map)' : '(covers the whole arena)'}</span></label>
-    </>}
-    {show.inner && <Slider label="Safe radius" value={m.inner ?? 1} unit="tiles" min={0.5} max={Math.max(0.5, m.radius - 0.5)} step={0.1} onChange={v => onChange({ inner: v }, `inner-${m.id}`)} />}
-    {show.width && <Slider label="Width" value={m.width ?? 1} unit={(m.width ?? 1) === 1 ? 'tile' : 'tiles'} min={1} max={8} step={1} onChange={v => onChange({ width: v }, `width-${m.id}`)} />}
-    {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
-    {show.soak && <Slider label="Players needed" value={m.soak ?? 1} unit={(m.soak ?? 1) === 1 ? 'player' : 'players'} min={1} max={8} step={1} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
-    {m.kind !== 'marker' && <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />}
-    <TargetsField phase={phase} value={m.targets} onChange={v => onChange({ targets: v })} />
-    {show.angle && <Slider label="Spread" value={m.angle ?? 90} unit="°" min={15} max={360} step={15} onChange={v => onChange({ angle: v }, `angle-${m.id}`)} />}
-    {show.facing && !(anchor && m.followFacing) && !aimedAtTargets(m, phase.entities) && (
-      <label className="field">
-        <span className="field-line">Facing <b>{facingLabel(m.rotation)}</b></span>
-        <input type="range" min={0} max={345} step={15} value={m.rotation} onChange={ev => onChange({ rotation: Number(ev.target.value) }, `rot-${m.id}`)} />
-      </label>
+
+    {m.kind !== 'marker' && (
+      <Group title="Timing">
+        <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />
+      </Group>
     )}
   </>;
 }

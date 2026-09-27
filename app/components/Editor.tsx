@@ -1,5 +1,5 @@
 'use client';
-import { Copy, Download, FileJson, Image as ImageIcon, BookOpen, Keyboard, ListOrdered, Maximize2, MessageSquare, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
+import { Copy, Download, FileJson, Image as ImageIcon, BookOpen, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Keyboard, ListOrdered, MapPin, MousePointerClick, Maximize2, MessageSquare, Play, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -318,10 +318,80 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     onDragEnd: () => { setDragItem(null); setHover(null); },
   });
 
-  const selectTelegraph = (id: string) => {
+  // Right-click menu for a unit or telegraph.
+  const [ctx, setCtx] = useState<{ id: string; x: number; y: number; t: Target } | null>(null);
+  const openMenu = (id: string, x: number, y: number, t: Target) => {
+    const e = phaseFor(t).entities.find(x => x.id === id);
+    if (!e) return;
+    // Select in place: scrolling would close the menu.
+    if (isMechanic(e.kind)) selectTelegraph(id, false); else { setActiveTarget(t); setSelectedId(id); }
+    setCtx({ id, x, y, t });
+  };
+  useEffect(() => {
+    if (!ctx) return;
+    const close = (e: Event) => { if (!(e.target as Element | null)?.closest?.('.context-menu')) setCtx(null); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setCtx(null); };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', esc);
+    window.addEventListener('scroll', () => setCtx(null), { capture: true, once: true });
+    return () => { window.removeEventListener('pointerdown', close, true); window.removeEventListener('keydown', esc); };
+  }, [ctx]);
+  /** Moves a timeline event to the top or bottom, or one place up or down. */
+  const moveEvent = (id: string, where: 'top' | 'up' | 'down' | 'bottom') => commit(pl => updatePhase(pl, pi, f => {
+    const ids = timelineOf(f).map(i => i.id), from = ids.indexOf(id);
+    if (from < 0) return f;
+    const to = where === 'top' ? 0 : where === 'bottom' ? ids.length - 1 : Math.max(0, Math.min(ids.length - 1, from + (where === 'up' ? -1 : 1)));
+    if (to === from) return f;
+    const next = ids.slice(); next.splice(from, 1); next.splice(to, 0, id);
+    return { ...f, timeline: next };
+  }));
+  const duplicateTelegraph = (id: string) => {
+    const src = phase.entities.find(e => e.id === id);
+    if (!src) return;
+    const copy: Entity = { ...src, id: uid(src.kind), name: `${src.name} (copy)`.slice(0, 120) };
+    commit(pl => updatePhase(pl, pi, f => {
+      const ids = timelineOf(f).map(i => i.id);
+      const at = ids.indexOf(id) + 1;
+      return { ...f, entities: [...f.entities, copy], timeline: [...ids.slice(0, at), copy.id, ...ids.slice(at)] };
+    }));
+    selectTelegraph(copy.id);
+  };
+  const contextMenu = () => {
+    if (!ctx) return null;
+    const e = phaseFor(ctx.t).entities.find(x => x.id === ctx.id);
+    if (!e) return null;
+    const mech = isMechanic(e.kind);
+    const ids = timelineOf(phase).map(i => i.id), pos = ids.indexOf(e.id);
+    const page = mech && e.page ? plan.pages.find(g => g.id === e.page) : undefined;
+    const item = (label: string, run: () => void, opts: { disabled?: boolean; danger?: boolean; icon?: React.ReactNode } = {}) => (
+      <button type="button" role="menuitem" disabled={opts.disabled} className={opts.danger ? 'danger' : ''} onClick={() => { setCtx(null); run(); }}>{opts.icon}{label}</button>
+    );
+    return (
+      <div className="menu context-menu" role="menu" aria-label={e.name}
+        style={{ left: Math.min(ctx.x, window.innerWidth - 230), top: Math.min(ctx.y, window.innerHeight - (mech ? 330 : 150)) }}>
+        <div className="menu-heading">{e.name}</div>
+        {mech ? <>
+          {item('Select on its map', () => selectTelegraph(e.id), { icon: <MapPin size={14} /> })}
+          {item('Duplicate', () => duplicateTelegraph(e.id), { icon: <Copy size={14} /> })}
+          <hr />
+          {item('Move to top', () => moveEvent(e.id, 'top'), { disabled: pos <= 0, icon: <ChevronsUp size={14} /> })}
+          {item('Move up', () => moveEvent(e.id, 'up'), { disabled: pos <= 0, icon: <ChevronUp size={14} /> })}
+          {item('Move down', () => moveEvent(e.id, 'down'), { disabled: pos === ids.length - 1, icon: <ChevronDown size={14} /> })}
+          {item('Move to bottom', () => moveEvent(e.id, 'bottom'), { disabled: pos === ids.length - 1, icon: <ChevronsDown size={14} /> })}
+          {page && <><hr />{item(`Open page "${page.title || 'Untitled'}"`, () => { setPageId(page.id); setView('pages'); }, { icon: <BookOpen size={14} /> })}</>}
+        </> : <>
+          {item('Select', () => { setActiveTarget(ctx.t); setSelectedId(e.id); }, { icon: <MousePointerClick size={14} /> })}
+          {e.marker && item('Remove marker', () => patchEntity(e.id, { marker: undefined }, undefined, ctx.t), { icon: <X size={14} /> })}
+        </>}
+        <hr />
+        {item('Delete', () => { deleteEntity(e.id, mech ? 'base' : ctx.t); notify(`${e.name} deleted. Ctrl+Z to undo.`); }, { danger: true, icon: <Trash2 size={14} /> })}
+      </div>
+    );
+  };
+  const selectTelegraph = (id: string, scroll = true) => {
     setActiveTarget(mechTarget(id));
     setSelectedId(id);
-    requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    if (scroll) requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
   };
   const saveDiagram = (pageId: string | null, diagram: Diagram) => {
     const page = pageId ? plan.pages.find(g => g.id === pageId) : createPage(diagram.caption || 'New mechanic');
@@ -477,7 +547,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             showMoves={t === 'base' && layers.moves} showTerrain={layers.terrain} showTelegraphs={layers.telegraphs}
             transform={isActive && tool.type === 'select' && !(selectedId && displacedIn(t, selectedId))}
             highlight={hoverTarget === t ? highlight : null} speech={here ? speech : null} stage={here ? stage : null}
-            onPointer={pointerFor(t)} onLeave={() => setHover(null)}
+            onPointer={pointerFor(t)} onLeave={() => setHover(null)} onEntityMenu={(id, x, y) => openMenu(id, x, y, t)}
             onDragTile={tile => dragOver(tile, t)} onDropTile={tile => dropOn(tile, t)} />
         </div>
       </div>
@@ -622,7 +692,8 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                 onChange={(fn, key) => commit(p => updatePhase(p, pi, f => ({ ...f, conversations: fn(f.conversations) })), key)}
                 onPhase={(fn, key) => commit(p => updatePhase(p, pi, fn), key)}
                 onMechanic={(id, patch, key) => patchEntity(id, patch, key)}
-                onSelectMechanic={selectTelegraph}
+                onSelectMechanic={id => selectTelegraph(id)}
+                onMechanicMenu={(id, x, y) => openMenu(id, x, y, mechTarget(id))}
                 onDeleteMechanic={id => { deleteEntity(id, 'base'); notify('Telegraph deleted. Ctrl+Z to undo.'); }}
                 onCreatePage={title => { const page = createPage(title); commit(p => ({ ...p, pages: [...p.pages, page] })); return page.id; }}
                 onOpenPage={id => { setPageId(id); setView('pages'); }}
@@ -736,6 +807,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           </div>
         </div>
       )}
+      {contextMenu()}
       <div className={`toast${toast ? ' visible' : ''}`} role="status">{toast}</div>
     </div>
   );
