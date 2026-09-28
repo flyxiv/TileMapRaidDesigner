@@ -447,11 +447,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   const dragOver = (tile: [number, number] | null, t: Target) => {
     if (!dragItem) return;
     setHover(tile); setHoverTarget(t);
-    if (tile && dragItem.type === 'terrain' && !mechOf(t)) { setActiveTarget(t); commit(pl => paintOn(pl, t, brushTiles(...tile), dragItem.terrain), `drag-paint-${t}`); }
   };
   const dropOn = (tile: [number, number], t: Target) => {
     if (dragItem?.type === 'waymark') { const k = dragItem.key; commit(pl => updatePhase(pl, pi, f => setWaymark(f, k, tile))); setActiveTarget(t); setSelectedId(waymarkId(k)); }
-    else if (dragItem && dragItem.type !== 'terrain') spawn(dragItem, tile, undefined, t);
+    // Terrain paints where it is dropped (the brush's tiles), not along the way.
+    else if (dragItem?.type === 'terrain') { if (mechOf(t)) notify('Paint terrain on the starting map or a conversation map'); else { setActiveTarget(t); commit(pl => paintOn(pl, t, brushTiles(...tile), dragItem.terrain)); } }
+    else if (dragItem) spawn(dragItem, tile, undefined, t);
     setDragItem(null);
   };
   const goPhase = (i: number) => setPhaseIndex(Math.max(0, Math.min(plan.phases.length - 1, i)));
@@ -835,7 +836,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <button type="button" className="icon-button dialog-close" aria-label="Close" onClick={() => setShortcuts(false)}><X size={16} /></button>
             <h2 id="shortcuts-title">Keyboard shortcuts</h2>
             <dl>
-              {[['Drag from palette', 'Place a unit or telegraph; drag terrain across tiles to paint'], ['Arrow keys', 'Nudge selection one tile'], ['R / Shift+R', 'Rotate unit 45°'], ['Delete', 'Remove selection'],
+              {[['Drag from palette', 'Place a unit, telegraph, waymark or terrain where you drop it'], ['Arrow keys', 'Nudge selection one tile'], ['R / Shift+R', 'Rotate unit 45°'], ['Delete', 'Remove selection'],
                 ['[ and ]', 'Previous / next phase'], ['Ctrl+Z', 'Undo'], ['Ctrl+Shift+Z', 'Redo'], ['P', 'Present mode'], ['Esc', 'Deselect']].map(([k, v]) => (
                 <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>
               ))}

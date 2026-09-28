@@ -90,6 +90,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
     if (hit && tile && !(isMechanic(hit.kind) && hit.anchor)) gesture.current = { mode: 'drag', id: hit.id, offset: [tile[0] - hit.x, tile[1] - hit.y] };
   };
   const placeAt = (item: Tool, tile: [number, number]) => {
+    if (item.type === 'terrain') { paint(tile, item.terrain); return; }
     if (item.type === 'waymark') { placeMark(item.key, tile, `${key}-add`); setSelectedId(waymarkId(item.key)); return; }
     let e: Entity;
     if (item.type === 'unit') {
@@ -144,7 +145,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
       <div className="diagram-map">
         <BattleMap className="battlemap" plan={plan} phaseIndex={0} cell={cell} showMoves={false} selectedId={selectedId}
           transform highlight={highlight} onPointer={onPointer} onLeave={() => setHover(null)}
-          onDragTile={tile => { setHover(tile); if (tile && dragItem?.type === 'terrain') paint(tile, dragItem.terrain); }}
+          onDragTile={setHover}
           onDropTile={tile => { if (dragItem) placeAt(dragItem, tile); setDragItem(null); }} />
       </div>
       {selectedMark && (
