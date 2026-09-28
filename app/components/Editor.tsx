@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  bossOf, unitFacing, MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  bossOf, tankOf, unitFacing, MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -293,6 +293,9 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       if (on && isUnit(on.kind) && item.kind !== 'armageddon') {
         e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
         notify(`${e.name} starts from ${on.name}`);
+      } else if (item.kind === 'guard') {
+        const tank = tankOf(tphase.entities);
+        if (tank) { e = { ...e, anchor: tank.id, followFacing: true }; notify(`${e.name} is behind ${tank.name}`); }
       } else if (item.kind === 'slash') {
         const boss = bossOf(tphase.entities);
         if (boss) { e = { ...e, anchor: boss.id, followFacing: true }; notify(`${e.name} starts from ${boss.name}`); }

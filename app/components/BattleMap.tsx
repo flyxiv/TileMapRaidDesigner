@@ -195,7 +195,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
 });
 
 function HazardTile({ m, x, y, strength, C }: { m: Entity; x: number; y: number; strength: number; C: number }) {
-  if (m.kind === 'marker') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(198,235,149,0.2)" stroke="rgba(198,235,149,0.35)" />;
+  if (m.kind === 'marker' || m.kind === 'guard') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(198,235,149,0.2)" stroke="rgba(198,235,149,0.35)" />;
   if (m.kind === 'tower') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(134,197,242,0.22)" stroke="rgba(134,197,242,0.4)" />;
   const fill = m.kind === 'stack' ? 'url(#rd-share)' : 'url(#rd-tele)';
   return <rect x={x * C} y={y * C} width={C} height={C} fill={fill} opacity={m.kind === 'armageddon' ? 0.75 : strength} />;
@@ -236,13 +236,14 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
     case 'knockback': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={C * 0.45} to={C * 0.45 + (m.push ?? 2) * C} count={8} tone={tone} head={head} /></>; break;
     case 'donut': shape = <>{ring(R)}<circle cx={cx} cy={cy} r={(m.inner ?? 1) * C} fill="none" stroke={tones.safe} strokeWidth={width} /></>; break;
     case 'cone':
-    case 'slash': {
+    case 'slash':
+    case 'guard': {
       const { facing, spread } = wedgeOf(m, entities), w = (facing * Math.PI) / 180;
       const R2 = (reach(m) + 0.3) * C, h = (spread * Math.PI) / 360;
       const p = (t: number) => `${cx + R2 * Math.sin(t)} ${cy - R2 * Math.cos(t)}`;
       shape = spread >= 360
-        ? <circle cx={cx} cy={cy} r={R2} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />
-        : <path d={`M${cx} ${cy} L${p(w - h)} A${R2} ${R2} 0 ${spread > 180 ? 1 : 0} 1 ${p(w + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray="5 4" />;
+        ? <circle cx={cx} cy={cy} r={R2} fill="none" stroke={tone} strokeWidth={width} strokeDasharray={m.kind === 'guard' ? undefined : '5 4'} />
+        : <path d={`M${cx} ${cy} L${p(w - h)} A${R2} ${R2} 0 ${spread > 180 ? 1 : 0} 1 ${p(w + h)} Z`} fill="none" stroke={tone} strokeWidth={width} strokeDasharray={m.kind === 'guard' ? undefined : '5 4'} />;
       break;
     }
     case 'line': {
@@ -274,7 +275,7 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   const labelAt = Math.min(reach(m), 4) * (m.kind === 'cone' ? 0.88 : 0.55);
   if (m.kind === 'line') { const [s] = lineSegments(m, entities); if (s) [x, y] = [ox + s.dir[0] * Math.min(s.length * 0.5, labelAt), oy + s.dir[1] * Math.min(s.length * 0.5, labelAt)]; }
   else if (m.kind === 'cone') [x, y] = [ox + Math.sin(a) * labelAt, oy - Math.cos(a) * labelAt];
-  else if (m.kind === 'slash') { const w = (wedgeOf(m, entities).facing * Math.PI) / 180, d = Math.min(reach(m), 3.5); [x, y] = [ox + Math.sin(w) * d, oy - Math.cos(w) * d]; }
+  else if (m.kind === 'slash' || m.kind === 'guard') { const w = (wedgeOf(m, entities).facing * Math.PI) / 180, d = Math.min(reach(m), 3.5); [x, y] = [ox + Math.sin(w) * d, oy - Math.cos(w) * d]; }
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
   else if (m.kind === 'marker') y = oy + 1.25;
   else if (m.kind === 'tower') y = oy + m.radius + 0.45; // below the ring, clear of the count inside it

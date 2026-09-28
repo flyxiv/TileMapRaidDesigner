@@ -36,11 +36,12 @@ export const mechanicTypes = {
   knockback: { name: 'Knockback', description: 'Pushes units away from the origin' },
   armageddon: { name: 'Armageddon', description: 'Arena-wide damage outside safe zones' },
   marker: { name: 'Marker', description: 'Safe zone' },
+  guard: { name: 'Guard zone', description: 'Safe zone behind a unit: allies there take less damage' },
 };
 export const tones = { telegraph: '#dbb36d', safe: '#c6eb95', soak: '#86c5f2' };
 /** Which settings a mechanic kind uses. */
 export const mechanicFields = (kind: Kind) => ({
-  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line' || kind === 'slash', angle: kind === 'cone', inner: kind === 'donut',
+  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line' || kind === 'slash' || kind === 'guard', angle: kind === 'cone' || kind === 'guard', inner: kind === 'donut',
   width: kind === 'line', push: kind === 'knockback', soak: kind === 'tower', origin: kind !== 'armageddon',
 });
 
@@ -192,7 +193,7 @@ export const colLabel = (i: number) => i < 26 ? String.fromCharCode(65 + i) : 'A
 export const tileLabel = (x: number, y: number) => `${colLabel(x)}${y + 1}`;
 
 export function mechanicTone(e: Pick<Entity, 'kind'>) {
-  if (e.kind === 'marker' || e.kind === 'stack') return tones.safe;
+  if (e.kind === 'marker' || e.kind === 'guard' || e.kind === 'stack') return tones.safe;
   if (e.kind === 'tower') return tones.soak;
   return tones.telegraph;
 }
@@ -369,8 +370,12 @@ export function unitFacing(u: Entity, entities: Entity[]) {
 export const resolveFacing = (entities: Entity[]): Entity[] =>
   entities.some(e => e.faceToward) ? entities.map(e => e.faceToward ? { ...e, rotation: unitFacing(e, entities) } : e) : entities;
 /** The unit boss-based mechanics come from: the boss, else the first enemy. */
+/** The first tank, which guard zones come from by default. */
+export const tankOf = (entities: Entity[]) => entities.find(e => e.kind === 'tank');
 export const bossOf = (entities: Entity[]) => entities.find(e => e.kind === 'boss') ?? entities.find(e => isUnit(e.kind) && unitTypes[e.kind].category === 'enemies');
-export const aims = (kind: Kind) => kind === 'cone' || kind === 'line' || kind === 'slash';
+export const aims = (kind: Kind) => kind === 'cone' || kind === 'line' || kind === 'slash' || kind === 'guard';
+/** Safe zones: plain markers, and guard zones behind a unit. */
+export const isSafeZone = (kind: Kind) => kind === 'marker' || kind === 'guard';
 /**
  * The wedge a cone or side slash covers: the direction it opens toward (compass degrees) and its spread. A side slash is
  * the half of the arena on its source's left or right, so it opens 90° off the facing with a 180° spread.
@@ -378,6 +383,8 @@ export const aims = (kind: Kind) => kind === 'cone' || kind === 'line' || kind =
 export function wedgeOf(m: Entity, entities: Entity[]): { facing: number; spread: number } {
   const facing = mechanicFacing(m, entities);
   if (m.kind === 'slash') return { facing: (facing + (m.side === 'right' ? 90 : 270)) % 360, spread: 180 };
+  // A guard zone opens behind its source.
+  if (m.kind === 'guard') return { facing: (facing + 180) % 360, spread: Math.min(360, m.angle ?? 120) };
   return { facing, spread: Math.min(360, m.angle ?? 90) };
 }
 
@@ -402,6 +409,7 @@ export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, numbe
     switch (m.kind) {
       case 'cone':
       case 'slash':
+      case 'guard':
         if (inAnchor(x, y) || d < 0.3 || d > r + 0.2 || (dx * dir[0] + dy * dir[1]) / d < halfAngle) continue;
         break;
       case 'line': {
@@ -463,6 +471,7 @@ export function createMechanic(kind: MechanicKind, x: number, y: number): Entity
     knockback: { name: 'Knockback', radius: 3, rotation: 0, push: 2 },
     armageddon: { name: 'Armageddon', radius: 1, rotation: 0 },
     marker: { name: 'Safe zone', radius: 1.5, rotation: 0 },
+    guard: { name: '수호의 날개', radius: 3, rotation: 0, angle: 120 },
   }[kind];
   return { id: uid(kind), kind, code: '', x, y, ...defaults };
 }

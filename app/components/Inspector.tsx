@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { unitFacing, aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { isSafeZone, unitFacing, aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
 import { SoakField } from './SoakField';
@@ -234,7 +234,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
       </Group>
     )}
 
-    {m.kind !== 'marker' && (
+    {!isSafeZone(m.kind) && (
       <Group title="Timing">
         <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />
       </Group>
