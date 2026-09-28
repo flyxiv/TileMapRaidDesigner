@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { unitFacing, aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
+import { SoakField } from './SoakField';
 import { EventIcon } from './EventIcon';
 import { Glyph, MarkerIcon } from './glyphs';
 
@@ -159,7 +160,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
   const show = mechanicFields(m.kind);
   const anchor = m.anchor ? phase.entities.find(e => e.id === m.anchor) : undefined;
   const aimed = aimedAtTargets(m, phase.entities);
-  const hasSize = show.radius || show.inner || show.width || show.push || show.soak || show.angle;
+  const hasSize = show.radius || show.inner || show.width || show.push || show.angle;
   return <>
     <Header label="Selected telegraph" title={m.name} sub={`${mechanicTypes[m.kind as MechanicKind].name} · ${mechanicTypes[m.kind as MechanicKind].description}`} kind={m.kind} color={tone} round={false} />
     <Group title="Mechanic">
@@ -181,6 +182,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
           </label>
         )}
       </div>
+      {show.soak && <SoakField value={m.soak} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
       {m.shownOn && <p className="hint">Drawn on this map only, not a timeline event. Right-click it to make it one.</p>}
       {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
     </Group>
@@ -229,7 +231,6 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
         {show.angle && <Slider label="Spread" value={m.angle ?? 90} unit="°" min={15} max={360} step={15} onChange={v => onChange({ angle: v }, `angle-${m.id}`)} />}
         {show.inner && <Slider label="Safe radius" value={m.inner ?? 1} unit="tiles" min={0.5} max={Math.max(0.5, m.radius - 0.5)} step={0.1} onChange={v => onChange({ inner: v }, `inner-${m.id}`)} />}
         {show.push && <Slider label="Push distance" value={m.push ?? 2} unit="tiles" min={1} max={10} step={1} onChange={v => onChange({ push: v }, `push-${m.id}`)} />}
-        {show.soak && <Slider label="Players needed" value={m.soak ?? 1} unit={(m.soak ?? 1) === 1 ? 'player' : 'players'} min={1} max={8} step={1} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
       </Group>
     )}
 

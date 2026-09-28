@@ -543,3 +543,6 @@ button.save-status { border: 0; background: none; cursor: pointer; }
 .waymark { cursor: grab; }
 .tool-tile.marker-tile.placed { border-color: #4a5552; background: #1a2021; }
 .story-speaker optgroup { color: var(--muted); font-weight: 700; }
+.soak-field { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.soak-field .unit-input { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #b9c6ba; }
+.soak-field input { width: 56px; height: 28px; padding: 0 8px; }

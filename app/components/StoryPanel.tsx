@@ -5,6 +5,7 @@ import { BattleMap } from './BattleMap';
 import { MapPreviews } from './MapPreview';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
+import { SoakField } from './SoakField';
 import { EventIcon } from './EventIcon';
 import { IntInput } from './IntInput';
 import { Glyph } from './glyphs';
@@ -580,6 +581,7 @@ function MechanicItem({ m, phase, pages, cardRef, cardClass, handleProps, onChan
       <div className="mechanic-item-kind">Mechanic · {mechanicTypes[m.kind as MechanicKind].name} · {mechanicTypes[m.kind as MechanicKind].description}</div>
       <TriggerFields phase={phase} trigger={m.trigger} exclude={m.id} onChange={(t, key) => onChange({ trigger: t }, key && `${key}-${m.id}`)} />
       <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />
+      {m.kind === 'tower' && <SoakField value={m.soak} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
       <TargetsField phase={phase} value={m.targets} onChange={v => onChange({ targets: v })} />
       <div className="page-link">
         <BookOpen size={13} />

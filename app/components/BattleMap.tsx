@@ -229,7 +229,10 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
     case 'flare': shape = <>{ring(R, true, 0.5)}{ring(R * 0.66, true, 0.75)}{ring(R * 0.33)}</>; break;
     case 'spread': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={R + 3} to={R + C * 0.7} count={4} tone={tone} head={head} /></>; break;
     case 'stack': shape = <>{ring(R, false)}<Arrows cx={cx} cy={cy} from={R + C * 0.7} to={R + 3} count={4} tone={tone} head={head} /></>; break;
-    case 'tower': shape = <>{ring(R, false)}{ring(Math.max(3, R - C * 0.18), false, 0.6)}</>; break;
+    case 'tower': shape = <>
+      {ring(R, false)}{ring(Math.max(3, R - C * 0.18), false, 0.6)}
+      {C >= 8 && <text x={cx} y={cy + 0.5} textAnchor="middle" dominantBaseline="central" fontSize={Math.max(8, Math.min(R * 0.9, C * 0.8))} fontWeight="800" fill={tone} stroke="#141819" strokeWidth={Math.max(2, C * 0.1)} paintOrder="stroke" pointerEvents="none">{m.soak ?? 1}</text>}
+    </>; break;
     case 'knockback': shape = <>{ring(R)}<Arrows cx={cx} cy={cy} from={C * 0.45} to={C * 0.45 + (m.push ?? 2) * C} count={8} tone={tone} head={head} /></>; break;
     case 'donut': shape = <>{ring(R)}<circle cx={cx} cy={cy} r={(m.inner ?? 1) * C} fill="none" stroke={tones.safe} strokeWidth={width} /></>; break;
     case 'cone':
@@ -274,10 +277,11 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   else if (m.kind === 'slash') { const w = (wedgeOf(m, entities).facing * Math.PI) / 180, d = Math.min(reach(m), 3.5); [x, y] = [ox + Math.sin(w) * d, oy - Math.cos(w) * d]; }
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
   else if (m.kind === 'marker') y = oy + 1.25;
+  else if (m.kind === 'tower') y = oy + m.radius + 0.45; // below the ring, clear of the count inside it
   else if (m.infinite) y = oy + 1.2;
   else if (anchor) y = oy + Math.min(m.radius, 1.6) + 0.35; // keep the label off the targeted unit
   const tone = mechanicTone(m);
-  const label = [m.kind === 'tower' ? `${m.name} ×${m.soak ?? 1}` : m.name, castLabel(m)].filter(Boolean).join(' · ');
+  const label = [m.name, castLabel(m)].filter(Boolean).join(' · ');
   const w = label.length * 5.9 + 16, h = 22;
   return (
     <g data-entity={m.id} className={`mech-label${selected ? ' selected' : ''}`} transform={`translate(${x * C - w / 2} ${y * C - h / 2})`}>
