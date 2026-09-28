@@ -624,7 +624,14 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
         <MechanicPages
           plan={plan} pageId={pageId} onSelect={setPageId}
           onCreate={() => { const page = createPage('New mechanic'); commit(p => ({ ...p, pages: [...p.pages, page] })); setPageId(page.id); }}
-          onChange={(id, patch, key) => commit(p => ({ ...p, pages: p.pages.map(g => g.id === id ? { ...g, ...patch } : g) }), key)}
+          onChange={(id, patch, key) => commit(p => {
+            // Renaming a page renames its events that still carry the page's old title (ones given their own name keep it).
+            const old = p.pages.find(g => g.id === id)?.title;
+            const renamed = patch.title !== undefined && old !== undefined && patch.title !== old;
+            return { ...p, pages: p.pages.map(g => g.id === id ? { ...g, ...patch } : g),
+              phases: renamed ? p.phases.map(f => ({ ...f, entities: f.entities.map(e => e.page === id && isMechanic(e.kind) && (e.name === (old.trim() || mechanicTypes[e.kind as MechanicKind].name) || !e.name.trim())
+                ? { ...e, name: (patch.title!.trim() || mechanicTypes[e.kind as MechanicKind].name).slice(0, 120) } : e) })) : p.phases };
+          }, key)}
           onUpdate={(id, fn, key) => commit(p => ({ ...p, pages: p.pages.map(g => g.id === id ? fn(g) : g) }), key)}
           onDelete={id => {
             commit(p => ({ ...p, pages: p.pages.filter(g => g.id !== id), phases: p.phases.map(f => ({ ...f, entities: f.entities.map(e => e.page === id ? { ...e, page: undefined } : e) })) }));
