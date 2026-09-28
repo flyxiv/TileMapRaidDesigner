@@ -2,7 +2,7 @@
 import { ArrowDown, ArrowUp, GripVertical, Map as MapIcon, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import {
-  MAX_RADIUS, MAX_UNIT_SIZE, aims, bossOf, tankOf, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
+  MAX_RADIUS, MAX_UNIT_SIZE, aims, bossOf, paletteMechanics, partySkills, tankOf, center, clampEntity, createMechanic, diagramPlan, entityAt, footprint, isMechanic, isUnit, mechanicOrigin, mechanicTone, mechanicTypes,
   nextCode, setWaymark, terrainTypes, uid, unitTypes, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, type Diagram, type Entity, type MechanicKind, type Terrain, type UnitKind,
 } from '../plan';
 import { BattleMap, type MapPointer, type TransformHandle } from './BattleMap';
@@ -99,7 +99,7 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
     } else if (item.type === 'mechanic') {
       e = createMechanic(item.kind, tile[0], tile[1]);
       const on = entityAt(phase, ...tile);
-      if (on && isUnit(on.kind) && item.kind !== 'armageddon') e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
+      if (on && isUnit(on.kind) && item.kind !== 'armageddon' && item.kind !== 'icewall') e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
       else if (item.kind === 'guard') { const tank = tankOf(d.entities); if (tank) e = { ...e, anchor: tank.id, followFacing: true }; }
       else if (item.kind === 'slash') { const boss = bossOf(d.entities); if (boss) e = { ...e, anchor: boss.id, followFacing: true }; }
     } else return;
@@ -138,7 +138,9 @@ export function DiagramEditor({ diagram: d, index, count, onChange, onMove, onDe
         <span className="divider" />
         {(Object.keys(unitTypes) as UnitKind[]).map(k => toolButton({ type: 'unit', kind: k }, `Place ${unitTypes[k].name}`, <Glyph kind={k} size={14} color={unitTypes[k].color} strokeWidth={2.2} />))}
         <span className="divider" />
-        {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => toolButton({ type: 'mechanic', kind: k }, `Place ${mechanicTypes[k].name}`, <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} />))}
+        {paletteMechanics.map(k => toolButton({ type: 'mechanic', kind: k }, `Place ${mechanicTypes[k].name}`, <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} />))}
+        <span className="divider" />
+        {partySkills.map(k => toolButton({ type: 'mechanic', kind: k }, `Place ${mechanicTypes[k].name}`, <Glyph kind={k} size={14} color={mechanicTone({ kind: k })} />))}
         <span className="divider" />
         {waymarkKeys.map(k => toolButton({ type: 'waymark', key: k }, `Place waymark ${k}`, <WaymarkIcon k={k} size={16} />))}
       </div>

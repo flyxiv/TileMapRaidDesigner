@@ -21,6 +21,7 @@ export const glyphs: Record<Kind, string> = {
   knockback: 'M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4z M16 8l4-4 M16 4h4v4 M8 16l-4 4 M4 16v4h4',
   armageddon: 'M12 2v4 M12 18v4 M2 12h4 M18 12h4 M4.9 4.9l2.8 2.8 M16.3 16.3l2.8 2.8 M4.9 19.1l2.8-2.8 M16.3 7.7l2.8-2.8 M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z',
   marker: 'M12 3l9 9-9 9-9-9z',
+  icewall: 'M3 9h18v6H3z M7 9v6 M11 9v6 M15 9v6 M19 9v6 M12 3v3 M10.5 4.5l3 0 M12 18v3 M10.5 19.5h3',
   guard: 'M12 20V8 M12 8C9 4.5 5.5 3.5 2.5 4.5c.8 5 4 8.5 9.5 9.5 M12 8c3-3.5 6.5-4.5 9.5-3.5-.8 5-4 8.5-9.5 9.5',
 };
 

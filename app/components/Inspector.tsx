@@ -1,6 +1,6 @@
 'use client';
 import { Trash2 } from 'lucide-react';
-import { isSafeZone, unitFacing, aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
+import { isPartySkill, isSafeZone, unitFacing, aimedAtTargets, markerTypes, type MarkerKind, MAX_RADIUS, MAX_UNIT_SIZE, footprint, isMechanic, isUnit, aims, mechanicFacing, mechanicFields, mechanicTone, mechanicTypes, tileLabel, unitCategories, unitsIn, unitTypes, type UnitCategory, type Entity, type MechanicKind, type Phase, type Plan, type UnitKind } from '../plan';
 import { CastTimeField } from './CastTimeField';
 import { TargetsField } from './TargetsField';
 import { SoakField } from './SoakField';
@@ -184,6 +184,8 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
       </div>
       {show.soak && <SoakField value={m.soak} onChange={v => onChange({ soak: v }, `soak-${m.id}`)} />}
       {m.shownOn && <p className="hint">Drawn on this map only, not a timeline event. Right-click it to make it one.</p>}
+      {m.kind === 'guard' && <p className="hint">Attacks on this map don't reach the area behind {anchor?.name ?? 'it'}.</p>}
+      {m.kind === 'icewall' && <p className="hint">A straight wall of 5 tiles through its tile; turn it to lay it another way.</p>}
       {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
     </Group>
 
@@ -234,7 +236,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
       </Group>
     )}
 
-    {!isSafeZone(m.kind) && (
+    {!isSafeZone(m.kind) && !isPartySkill(m.kind) && (
       <Group title="Timing">
         <CastTimeField value={m.castTime} onChange={(v, key) => onChange({ castTime: v }, key && `${key}-${m.id}`)} />
       </Group>

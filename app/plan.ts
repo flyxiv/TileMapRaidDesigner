@@ -36,12 +36,13 @@ export const mechanicTypes = {
   knockback: { name: 'Knockback', description: 'Pushes units away from the origin' },
   armageddon: { name: 'Armageddon', description: 'Arena-wide damage outside safe zones' },
   marker: { name: 'Marker', description: 'Safe zone' },
-  guard: { name: 'Guard zone', description: 'Safe zone behind a unit: allies there take less damage' },
+  guard: { name: '수호의 날개', description: 'Party skill: a safe spot behind a unit that attacks do not reach' },
+  icewall: { name: '얼음 벽', description: 'Party skill: a 1 × 5 wall of ice' },
 };
-export const tones = { telegraph: '#dbb36d', safe: '#c6eb95', soak: '#86c5f2' };
+export const tones = { telegraph: '#dbb36d', safe: '#c6eb95', soak: '#86c5f2', ice: '#a9e3f7' };
 /** Which settings a mechanic kind uses. */
 export const mechanicFields = (kind: Kind) => ({
-  radius: kind !== 'armageddon', facing: kind === 'cone' || kind === 'line' || kind === 'slash' || kind === 'guard', angle: kind === 'cone' || kind === 'guard', inner: kind === 'donut',
+  radius: kind !== 'armageddon' && kind !== 'icewall', facing: kind === 'cone' || kind === 'line' || kind === 'slash' || kind === 'guard' || kind === 'icewall', angle: kind === 'cone' || kind === 'guard', inner: kind === 'donut',
   width: kind === 'line', push: kind === 'knockback', soak: kind === 'tower', origin: kind !== 'armageddon',
 });
 
@@ -195,6 +196,7 @@ export const tileLabel = (x: number, y: number) => `${colLabel(x)}${y + 1}`;
 export function mechanicTone(e: Pick<Entity, 'kind'>) {
   if (e.kind === 'marker' || e.kind === 'guard' || e.kind === 'stack') return tones.safe;
   if (e.kind === 'tower') return tones.soak;
+  if (e.kind === 'icewall') return tones.ice;
   return tones.telegraph;
 }
 
@@ -374,7 +376,13 @@ export const resolveFacing = (entities: Entity[]): Entity[] =>
 export const tankOf = (entities: Entity[]) => entities.find(e => e.kind === 'tank');
 export const bossOf = (entities: Entity[]) => entities.find(e => e.kind === 'boss') ?? entities.find(e => isUnit(e.kind) && unitTypes[e.kind].category === 'enemies');
 export const aims = (kind: Kind) => kind === 'cone' || kind === 'line' || kind === 'slash' || kind === 'guard';
-/** Safe zones: plain markers, and guard zones behind a unit. */
+/** Skills the party uses, listed in their own palette section rather than with the boss's mechanics. */
+export const partySkills: MechanicKind[] = ['guard', 'icewall'];
+export const isPartySkill = (kind: Kind) => (partySkills as Kind[]).includes(kind);
+export const paletteMechanics = (Object.keys(mechanicTypes) as MechanicKind[]).filter(k => !isPartySkill(k));
+/** Safe zones: plain markers, and 수호의 날개 (a safe spot behind a unit). */
+/** Kinds that deal damage, which a 수호의 날개 behind a unit blocks. */
+export const blockedByGuard = (kind: Kind) => isMechanic(kind) && !isSafeZone(kind) && !isPartySkill(kind) && kind !== 'tower' && kind !== 'stack';
 export const isSafeZone = (kind: Kind) => kind === 'marker' || kind === 'guard';
 /**
  * The wedge a cone or side slash covers: the direction it opens toward (compass degrees) and its spread. A side slash is
@@ -390,7 +398,15 @@ export function wedgeOf(m: Entity, entities: Entity[]): { facing: number; spread
 
 /** Walkable tiles a mechanic covers. Walls and void never take damage. */
 /** Walkable tiles a mechanic covers, each with a strength from 0 to 1 (below 1 only for flare falloff). Walls and void never take damage. */
-export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, number, number][] {
+export const ICE_WALL_LENGTH = 5;
+/** The tiles an ice wall stands on: a straight run of 5 through its tile, along its rotation (snapped to 45°). */
+export function iceWallTiles(m: Entity): [number, number][] {
+  const a = (Math.round(m.rotation / 45) * 45 * Math.PI) / 180, ux = Math.round(Math.sin(a)), uy = Math.round(-Math.cos(a));
+  const half = Math.floor(ICE_WALL_LENGTH / 2);
+  return Array.from({ length: ICE_WALL_LENGTH }, (_, i) => [m.x + ux * (i - half), m.y + uy * (i - half)]);
+}
+export function hazardTiles(m: Entity, phase: Phase, plan: Plan, ignoreGuards = false): [number, number, number][] {
+  if (m.kind === 'icewall') return iceWallTiles(m).filter(([x, y]) => x >= 0 && y >= 0 && x < plan.cols && y < plan.rows).map(([x, y]) => [x, y, 1]);
   const { point: [cx, cy], anchor } = mechanicOrigin(m, phase.entities);
   const wedge = wedgeOf(m, phase.entities);
   const a = (wedge.facing * Math.PI) / 180, dir = [Math.sin(a), -Math.cos(a)];
@@ -437,7 +453,11 @@ export function hazardTiles(m: Entity, phase: Phase, plan: Plan): [number, numbe
     }
     tiles.push([x, y, strength]);
   }
-  return tiles;
+  // Attacks do not reach the safe spots behind units guarded by 수호의 날개 on the same map.
+  const guards = blockedByGuard(m.kind) && !ignoreGuards ? phase.entities.filter(e => e.kind === 'guard') : [];
+  if (!guards.length) return tiles;
+  const safe = new Set(guards.flatMap(g => hazardTiles(g, phase, plan).map(([x, y]) => `${x},${y}`)));
+  return tiles.filter(([x, y]) => !safe.has(`${x},${y}`));
 }
 
 export function entityAt(phase: Phase, x: number, y: number) {
@@ -471,7 +491,8 @@ export function createMechanic(kind: MechanicKind, x: number, y: number): Entity
     knockback: { name: 'Knockback', radius: 3, rotation: 0, push: 2 },
     armageddon: { name: 'Armageddon', radius: 1, rotation: 0 },
     marker: { name: 'Safe zone', radius: 1.5, rotation: 0 },
-    guard: { name: '수호의 날개', radius: 3, rotation: 0, angle: 120 },
+    guard: { name: '수호의 날개', radius: 3, rotation: 0, angle: 120, infinite: true },
+    icewall: { name: '얼음 벽', radius: 2.5, rotation: 90 },
   }[kind];
   return { id: uid(kind), kind, code: '', x, y, ...defaults };
 }

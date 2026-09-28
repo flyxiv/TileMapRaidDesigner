@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useId, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { wedgeOf, resolveFacing, waymarkId, waymarkTypes, type WaymarkKey, aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
+import { blockedByGuard, wedgeOf, resolveFacing, waymarkId, waymarkTypes, type WaymarkKey, aimedAtTargets, lineSegments, castLabel, reach, aims, mechanicTypes, type ActionStep, type MechanicKind, center, colLabel, mechanicFacing, footprint, hazardTiles, isMechanic, isUnit, mechanicOrigin, mechanicTone, terrainTypes, tileLabel, tones, unitTypes, type Entity, type Plan } from '../plan';
 import { MarkerShape, glyphs } from './glyphs';
 import { SpeechBubble, type Speech } from './SpeechBubble';
 
@@ -55,7 +55,12 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
   const W = plan.cols * C + G, H = plan.rows * C + G;
   const units = phase.entities.filter(e => isUnit(e.kind));
   const mechanics = phase.entities.filter(e => isMechanic(e.kind));
-  const hazards = mechanics.map(m => ({ m, tiles: hazardTiles(m, phase, plan) }));
+  // A 수호의 날개 is shaded where it shelters someone from an attack on this map (all of it when there is none).
+  const attacked = new Set(mechanics.filter(m => blockedByGuard(m.kind)).flatMap(m => hazardTiles(m, phase, plan, true).map(([x, y]) => `${x},${y}`)));
+  const hazards = mechanics.map(m => {
+    const tiles = hazardTiles(m, phase, plan);
+    return { m, tiles: m.kind === 'guard' && attacked.size ? tiles.filter(([x, y]) => attacked.has(`${x},${y}`)) : tiles };
+  });
   const clipId = useId().replace(/:/g, '');
   const selected = selectedId ? phase.entities.find(e => e.id === selectedId && e.kind !== 'armageddon') : undefined;
 
@@ -195,6 +200,7 @@ export const BattleMap = forwardRef<SVGSVGElement, Props>(function BattleMap(
 });
 
 function HazardTile({ m, x, y, strength, C }: { m: Entity; x: number; y: number; strength: number; C: number }) {
+  if (m.kind === 'icewall') return <rect x={x * C + 1} y={y * C + 1} width={C - 2} height={C - 2} rx={Math.max(2, C * 0.12)} fill="rgba(169,227,247,0.55)" stroke="#dff6ff" strokeWidth="1.2" />;
   if (m.kind === 'marker' || m.kind === 'guard') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(198,235,149,0.2)" stroke="rgba(198,235,149,0.35)" />;
   if (m.kind === 'tower') return <rect x={x * C + 0.5} y={y * C + 0.5} width={C - 1} height={C - 1} fill="rgba(134,197,242,0.22)" stroke="rgba(134,197,242,0.4)" />;
   const fill = m.kind === 'stack' ? 'url(#rd-share)' : 'url(#rd-tele)';
@@ -264,7 +270,7 @@ function MechanicOutline({ m, entities, C, selected }: { m: Entity; entities: En
   }
   return <>
     {shape}
-    {!anchor && m.kind !== 'marker' && m.kind !== 'armageddon' && <circle cx={cx} cy={cy} r={Math.max(3, C * 0.12)} fill={tone} stroke="#141819" strokeWidth="1.5" style={{ cursor: 'grab' }} />}
+    {!anchor && m.kind !== 'marker' && m.kind !== 'armageddon' && m.kind !== 'icewall' && <circle cx={cx} cy={cy} r={Math.max(3, C * 0.12)} fill={tone} stroke="#141819" strokeWidth="1.5" style={{ cursor: 'grab' }} />}
   </>;
 }
 
@@ -278,6 +284,7 @@ function MechanicChip({ m, plan, entities, C, selected }: { m: Entity; plan: Pla
   else if (m.kind === 'slash' || m.kind === 'guard') { const w = (wedgeOf(m, entities).facing * Math.PI) / 180, d = Math.min(reach(m), 3.5); [x, y] = [ox + Math.sin(w) * d, oy - Math.cos(w) * d]; }
   else if (m.kind === 'armageddon') [x, y] = [plan.cols / 2, 0.9];
   else if (m.kind === 'marker') y = oy + 1.25;
+  else if (m.kind === 'icewall') y = oy + 1.1;
   else if (m.kind === 'tower') y = oy + m.radius + 0.45; // below the ring, clear of the count inside it
   else if (m.infinite) y = oy + 1.2;
   else if (anchor) y = oy + Math.min(m.radius, 1.6) + 0.35; // keep the label off the targeted unit
@@ -356,7 +363,7 @@ function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: nu
   // A telegraph that follows its unit's facing is aimed by rotating the unit instead.
   // Targeted lines aim themselves at their targets: they keep their length handles but have nothing to rotate.
   const aimed = aimedAtTargets(e, entities);
-  const rotates = unit || (aims(e.kind) && !(e.followFacing && e.anchor) && !aimed);
+  const rotates = unit || e.kind === 'icewall' || (aims(e.kind) && !(e.followFacing && e.anchor) && !aimed);
   const a = ((unit ? e.rotation : mechanicFacing(e, entities)) * Math.PI) / 180, dx = Math.sin(a), dy = -Math.cos(a);
   // The stem leaves the box edge in the facing direction.
   const edge = half / Math.max(Math.abs(dx), Math.abs(dy)), stem = Math.max(22, C * 0.8);
@@ -365,7 +372,7 @@ function TransformBox({ e, entities, C }: { e: Entity; entities: Entity[]; C: nu
     <g className="transform-box">
       <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2} fill="none" stroke="#eef1ef" strokeOpacity="0.85" strokeWidth="1" pointerEvents="none" />
       {rotates && <line x1={sx} y1={sy} x2={hx} y2={hy} stroke="#eef1ef" strokeOpacity="0.85" strokeWidth="1" pointerEvents="none" />}
-      {!e.infinite && <>
+      {!e.infinite && e.kind !== 'icewall' && <>
         <Grip x={cx - half} y={cy - half} id={e.id} kind="nw" />
         <Grip x={cx + half} y={cy - half} id={e.id} kind="ne" />
         <Grip x={cx - half} y={cy + half} id={e.id} kind="sw" />

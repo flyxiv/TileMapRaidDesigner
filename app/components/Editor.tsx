@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  bossOf, tankOf, unitFacing, MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
+  paletteMechanics, partySkills, bossOf, tankOf, unitFacing, MAX_RADIUS, MAX_UNIT_SIZE, aims, center, createPage, mapBlock, pageKind, timelineOf, setWaymark, waymarkId, waymarkKeys, waymarkOf, type WaymarkKey, actionText, faceRotation, isAction, stagePhase, conversationScenes, sceneAtStep, sceneBeforeEvent, sceneOf, withTelegraphs, sceneToDiagram, type Conversation, type Diagram, clampEntity, createMechanic, mechanicOrigin, resizePlan, scriptOf, triggerLabel, mechanicTone, entityAt, footprint, unitCategories, unitsIn, isMechanic, isUnit, mechanicTypes, nextCode,
   terrainTypes, tileLabel, uid, unitTypes, type Entity, type MechanicKind, type Phase, type Plan, type Terrain, type UnitKind,
 } from '../plan';
 import { duplicateEncounter, saveEncounter } from '../library';
@@ -290,7 +290,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
       e = { ...createMechanic(item.kind, tile[0], tile[1]), ...extra };
       // Dropped on a unit: the telegraph starts from that unit, and cones and lines aim where it faces.
       const on = entityAt(tphase, ...tile);
-      if (on && isUnit(on.kind) && item.kind !== 'armageddon') {
+      if (on && isUnit(on.kind) && item.kind !== 'armageddon' && item.kind !== 'icewall') {
         e = { ...e, anchor: on.id, ...(aims(item.kind) ? { followFacing: true } : {}) };
         notify(`${e.name} starts from ${on.name}`);
       } else if (item.kind === 'guard') {
@@ -680,7 +680,17 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
             <section>
               <div className="section-title">Mechanics <span>Drag or place · M</span></div>
               <div className="grid-3">
-                {(Object.keys(mechanicTypes) as MechanicKind[]).map(k => (
+                {paletteMechanics.map(k => (
+                  <button key={k} type="button" className="tool-tile tall" title={`${mechanicTypes[k].description}. Drag onto a map to place it.`} onClick={() => notify('Drag it onto a map to place it')} {...dragProps({ type: 'mechanic', kind: k })}>
+                    <Glyph kind={k} size={22} color={mechanicTone({ kind: k })} strokeWidth={1.8} />{mechanicTypes[k].name}
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section>
+              <div className="section-title">Party Skills <span>Drag onto a map</span></div>
+              <div className="grid-3">
+                {partySkills.map(k => (
                   <button key={k} type="button" className="tool-tile tall" title={`${mechanicTypes[k].description}. Drag onto a map to place it.`} onClick={() => notify('Drag it onto a map to place it')} {...dragProps({ type: 'mechanic', kind: k })}>
                     <Glyph kind={k} size={22} color={mechanicTone({ kind: k })} strokeWidth={1.8} />{mechanicTypes[k].name}
                   </button>
