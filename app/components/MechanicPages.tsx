@@ -6,7 +6,7 @@ import { EventIcon } from './EventIcon';
 import { Inspector } from './Inspector';
 import { moveTo, useReorder } from './StoryPanel';
 import { MapPreviews } from './MapPreview';
-import { mapBlock, pageMaps, textBlock, clampEntity, diagramPlan, blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
+import { withTelegraphs, mapBlock, pageMaps, textBlock, clampEntity, diagramPlan, blankDiagram, sceneToDiagram, isMechanic, mechanicTone, mechanicTypes, pageKind, triggerLabel, type Diagram, type MechanicKind, type MechanicPage, type Plan } from '../plan';
 import { Glyph } from './glyphs';
 
 type Props = {
@@ -98,7 +98,7 @@ export function MechanicPages({ plan, pageId, onSelect, onCreate, onChange, onUp
                 {addMenu && (
                   <div className="menu mechanic-menu" role="menu">
                     {[{ label: 'Blank map', sub: `${plan.cols} × ${plan.rows} floor`, make: () => blankDiagram(plan.cols, plan.rows, `Map ${pageMaps(page).length + 1}`) },
-                      ...plan.phases.map((f, fi) => ({ label: `Copy phase ${fi + 1}: ${f.name}`, sub: 'Terrain and units as placed in that phase', make: (): Diagram => sceneToDiagram(f, plan, f.name) }))]
+                      ...plan.phases.map((f, fi) => ({ label: `Copy phase ${fi + 1}: ${f.name}`, sub: 'Its starting map: terrain, units and the effects drawn on it', make: (): Diagram => sceneToDiagram(withTelegraphs(f, [], 'base'), plan, f.name) }))]
                       .map(o => (
                         <button key={o.label} type="button" role="menuitem" onClick={() => { setAddMenu(false); const d = o.make(); onUpdate(page.id, g => ({ ...g, blocks: [...g.blocks, mapBlock(d)] })); }}>
                           <MapIcon size={14} /> <span><b>{o.label}</b><small>{o.sub}</small></span>

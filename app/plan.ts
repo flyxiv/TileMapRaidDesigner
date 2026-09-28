@@ -160,7 +160,7 @@ export function diagramPlan(d: Diagram): Plan {
 }
 /** Copies a scene (a phase's terrain and units, or any staged version of it) into a new diagram. */
 export function sceneToDiagram(phase: Phase, plan: Pick<Plan, 'cols' | 'rows'>, caption: string): Diagram {
-  return { id: uid('map'), caption, cols: plan.cols, rows: plan.rows, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(e => ({ ...e })), ...(phase.waymarks ? { waymarks: { ...phase.waymarks } } : {}) };
+  return { id: uid('map'), caption, cols: plan.cols, rows: plan.rows, terrain: phase.terrain.map(r => r.slice()), entities: phase.entities.map(({ shownOn: _, ...e }) => e), ...(phase.waymarks ? { waymarks: { ...phase.waymarks } } : {}) };
 }
 export function blankDiagram(cols: number, rows: number, caption: string): Diagram {
   return { id: uid('map'), caption, cols, rows, terrain: Array.from({ length: rows }, () => Array.from({ length: cols }, (): Terrain => 'floor')), entities: [] };
