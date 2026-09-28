@@ -25,6 +25,8 @@ type Gesture = { base: Plan; mode: 'drag' | 'paint' | 'rotate' | 'resize' | 'way
  */
 type Target = 'base' | string;
 const mechTarget = (id: string) => `m:${id}`;
+/** The key a map's own effects are stored under (see `Entity.shownOn`). */
+const mapKey = (t: string) => t.startsWith('m:') ? t.slice(2) : t;
 const mechOf = (t: Target) => t.startsWith('m:') ? t.slice(2) : null;
 
 
@@ -93,7 +95,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     : mechOf(t) ? sceneBeforeEvent(f, pl, mechOf(t)!)
     : (conversationScenes(f, pl).get(t)?.start ?? f);
   /** What a map shows: units, plus only the telegraph whose card it is. */
-  const visibleOn = (t: Target) => (e: Entity) => isUnit(e.kind) || e.id === mechOf(t);
+  const visibleOn = (t: Target) => (e: Entity) => isUnit(e.kind) || e.id === mechOf(t) || e.shownOn === mapKey(t);
   /**
    * Applies an edit made on a map. Conversation maps keep their own terrain and units (taken from the scene before them
    * the first time they are edited); telegraphs are shared by the phase, so telegraph edits land on the phase itself.
@@ -180,7 +182,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
   };
 
   const deleteEntity = (id: string, t: Target = activeTarget) => {
-    commit(p => updateTarget(p, t, f => ({ ...f, entities: f.entities.filter(e => e.id !== id).map(e => e.anchor === id ? { ...e, anchor: undefined, x: f.entities.find(a => a.id === id)!.x, y: f.entities.find(a => a.id === id)!.y } : e) })));
+    commit(p => updateTarget(p, t, f => ({ ...f, entities: f.entities.filter(e => e.id !== id && e.shownOn !== id).map(e => e.anchor === id ? { ...e, anchor: undefined, x: f.entities.find(a => a.id === id)!.x, y: f.entities.find(a => a.id === id)!.y } : e) })));
     setSelectedId(s => s === id ? null : s);
   };
 
@@ -276,7 +278,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
 
   /** Adds a unit or telegraph at a tile, or paints one brush of terrain, as one undo step. */
   /** `extra` overrides the new telegraph's defaults, e.g. the name and page it gets when placed from a mechanic page. */
-  const spawn = (item: Tool, tile: [number, number], extra?: Partial<Entity>, t: Target = activeTarget) => {
+  const spawn = (item: Tool, tile: [number, number], extra?: Partial<Entity>, t: Target = activeTarget, asEvent = false) => {
     const tphase = phaseFor(t);
     setActiveTarget(t);
     if (item.type === 'terrain') { if (!mechOf(t)) commit(pl => paintOn(pl, t, brushTiles(...tile), item.terrain)); return; }
@@ -298,6 +300,14 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     } else return;
     if (isMechanic(e.kind)) {
       if (mechOf(t) === null && t !== 'base' && !phase.conversations.some(c => c.id === t)) t = 'base';
+      if (!asEvent) {
+        // Dropped from the palette: an effect drawn on this map only, not a timeline event.
+        const effect: Entity = { ...e, shownOn: mapKey(t) };
+        commit(pl => updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, effect] })));
+        setActiveTarget(t);
+        setSelectedId(effect.id);
+        return effect.id;
+      }
       const created = e;
       commit(pl => {
         const added = updatePhase(pl, pi, f => ({ ...f, entities: [...f.entities, created] }));
@@ -362,6 +372,14 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     }));
     selectTelegraph(copy.id);
   };
+  /** Turns a map-only effect into a timeline event at the bottom of the timeline. */
+  const promoteEffect = (id: string) => {
+    commit(pl => updatePhase(pl, pi, f => ({ ...f,
+      entities: f.entities.map(e => e.id === id ? { ...e, shownOn: undefined } : e),
+      timeline: [...timelineOf(f).map(i => i.id).filter(x => x !== id), id] })));
+    setActiveTarget(mechTarget(id)); setSelectedId(id);
+    requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  };
   const contextMenu = () => {
     if (!ctx) return null;
     const wm = waymarkOf(ctx.id);
@@ -387,10 +405,12 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
           {item('Select on its map', () => selectTelegraph(e.id), { icon: <MapPin size={14} /> })}
           {item('Duplicate', () => duplicateTelegraph(e.id), { icon: <Copy size={14} /> })}
           <hr />
-          {item('Move to top', () => moveEvent(e.id, 'top'), { disabled: pos <= 0, icon: <ChevronsUp size={14} /> })}
-          {item('Move up', () => moveEvent(e.id, 'up'), { disabled: pos <= 0, icon: <ChevronUp size={14} /> })}
-          {item('Move down', () => moveEvent(e.id, 'down'), { disabled: pos === ids.length - 1, icon: <ChevronDown size={14} /> })}
-          {item('Move to bottom', () => moveEvent(e.id, 'bottom'), { disabled: pos === ids.length - 1, icon: <ChevronsDown size={14} /> })}
+          {e.shownOn ? item('Make it a timeline event', () => promoteEffect(e.id), { icon: <ListOrdered size={14} /> }) : <>
+            {item('Move to top', () => moveEvent(e.id, 'top'), { disabled: pos <= 0, icon: <ChevronsUp size={14} /> })}
+            {item('Move up', () => moveEvent(e.id, 'up'), { disabled: pos <= 0, icon: <ChevronUp size={14} /> })}
+            {item('Move down', () => moveEvent(e.id, 'down'), { disabled: pos === ids.length - 1, icon: <ChevronDown size={14} /> })}
+            {item('Move to bottom', () => moveEvent(e.id, 'bottom'), { disabled: pos === ids.length - 1, icon: <ChevronsDown size={14} /> })}
+          </>}
           {page && <><hr />{item(`Open page "${page.title || 'Untitled'}"`, () => { setPageId(page.id); setView('pages'); }, { icon: <BookOpen size={14} /> })}</>}
         </> : <>
           {item('Select', () => { setActiveTarget(ctx.t); setSelectedId(e.id); }, { icon: <MousePointerClick size={14} /> })}
@@ -402,6 +422,13 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     );
   };
   const selectTelegraph = (id: string, scroll = true) => {
+    const on = phase.entities.find(e => e.id === id)?.shownOn;
+    if (on) {
+      setActiveTarget(on === 'base' || phase.conversations.some(c => c.id === on) ? on : mechTarget(on));
+      setSelectedId(id);
+      if (scroll && on !== 'base') requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${on}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      return;
+    }
     setActiveTarget(mechTarget(id));
     setSelectedId(id);
     if (scroll) requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
@@ -537,7 +564,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
     return from ? { step: acting, from, text: actionText(acting, phase), rotation: faceRotation(acting, scene.entities) } : null;
   })();
   const mapCard = (t: Target, conv?: Conversation) => {
-    const display = withTelegraphs(displayFor(t), mechOf(t) ? [mechOf(t)!] : []);
+    const display = withTelegraphs(displayFor(t), mechOf(t) ? [mechOf(t)!] : [], mapKey(t));
     const shown = { ...plan, phases: plan.phases.map((f, i) => i === pi ? display : f) };
     const isActive = activeTarget === t, here = !!conv && !!active && active.conversation.id === conv.id;
     const cellSize = Math.max(10, Math.min(24, Math.floor(420 / (plan.cols + 1))));
@@ -722,7 +749,7 @@ export function Editor({ encounterId, initialPlan }: { encounterId: string; init
                     return [cx, cy];
                   };
                   const tile: [number, number] = aims(kind) && boss ? [boss.x, boss.y] : freeNearCenter();
-                  const id2 = spawn({ type: 'mechanic', kind }, tile, extra, 'base');
+                  const id2 = spawn({ type: 'mechanic', kind }, tile, extra, 'base', true);
                   requestAnimationFrame(() => document.querySelector(`[data-timeline-id="${id2}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
                 }}
                 pickingFor={picking?.id ?? null} onPickTile={apply => setPicking(apply ? { id: activeLine?.id, apply } : null)}

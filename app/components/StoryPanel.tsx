@@ -515,7 +515,7 @@ function LineCard({ plan, phase, phaseIndex, line: l, index, count, active, onAc
 
 function TriggerFields({ phase, trigger: t, onChange, exclude }: { phase: Phase; trigger?: DialogueTrigger; onChange: (t: DialogueTrigger | undefined, coalesceKey?: string) => void; exclude?: string }) {
   const enemies = phase.entities.filter(e => isUnit(e.kind) && unitTypes[e.kind as UnitKind].category === 'enemies');
-  const mechanics = phase.entities.filter(e => isMechanic(e.kind) && e.id !== exclude);
+  const mechanics = phase.entities.filter(e => isMechanic(e.kind) && !e.shownOn && e.id !== exclude);
   const setType = (type: DialogueTrigger['type']) => onChange(
     type === 'hp' ? { type, percent: 50, target: hpTarget({}, phase)?.id }
       : type === 'time' ? { type, seconds: 0 }

@@ -63,7 +63,7 @@ export function PresentView({ plan, index, onIndex, onExit }: { plan: Plan; inde
     return before?.conversation ? conversationScenes(phase, plan).get(before.conversation.id)?.end ?? phase : phase;
   })();
   const mechanicStep = script[line]?.mechanic;
-  const shownScene = withTelegraphs(staged, script[line]?.mechanic ? [script[line].mechanic!.id] : []);
+  const shownScene = withTelegraphs(staged, script[line]?.mechanic ? [script[line].mechanic!.id] : [], script[line]?.mechanic?.id ?? script[line]?.conversation?.id ?? 'base');
   const stagedPlan = { ...plan, phases: plan.phases.map((p, i) => i === index ? shownScene : p) };
   const acting = step && isAction(step) ? step : undefined;
   const actor = acting && staged.entities.find(e => e.id === acting.actor);

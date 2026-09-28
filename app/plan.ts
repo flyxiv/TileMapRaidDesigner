@@ -73,6 +73,11 @@ export type Entity = {
   faceToward?: string;
   /** Side slashes only: which side of its source it hits (left when unset). */
   side?: 'left' | 'right';
+  /**
+   * Telegraphs only, optional: shown on one map as an illustration, not as a timeline event. The map is 'base' (the
+   * phase's starting map), a conversation id (its map) or a telegraph id (that event's map).
+   */
+  shownOn?: string;
   /** Telegraphs only: when it goes off, and the mechanic page that explains it. */
   trigger?: DialogueTrigger;
   page?: string;
@@ -200,7 +205,7 @@ export type TimelineItem = { kind: 'conversation'; id: string; conversation: Con
 export function timelineOf(phase: Phase): TimelineItem[] {
   const items = new Map<string, TimelineItem>();
   for (const c of phase.conversations) items.set(c.id, { kind: 'conversation', id: c.id, conversation: c });
-  for (const m of phase.entities) if (isMechanic(m.kind)) items.set(m.id, { kind: 'mechanic', id: m.id, mechanic: m });
+  for (const m of phase.entities) if (isMechanic(m.kind) && !m.shownOn) items.set(m.id, { kind: 'mechanic', id: m.id, mechanic: m });
   const ordered = (phase.timeline ?? []).flatMap(id => { const item = items.get(id); items.delete(id); return item ? [item] : []; });
   return [...ordered, ...items.values()];
 }
@@ -290,8 +295,9 @@ export function sceneBeforeEvent(phase: Phase, plan: Plan, eventId: string): Pha
   return current;
 }
 /** A phase showing only its units and the given telegraphs: each telegraph appears only at its own point in the timeline. */
-export const withTelegraphs = (phase: Phase, ids: string[]): Phase =>
-  ({ ...phase, entities: phase.entities.filter(e => isUnit(e.kind) || ids.includes(e.id)) });
+/** A phase showing only the given telegraph events, plus the effects drawn on map `map` (see `Entity.shownOn`). */
+export const withTelegraphs = (phase: Phase, ids: string[], map?: string): Phase =>
+  ({ ...phase, entities: phase.entities.filter(e => isUnit(e.kind) || ids.includes(e.id) || (!!map && e.shownOn === map)) });
 
 /** The map at a step of a conversation: its start, with the conversation's earlier actions played. */
 export function sceneAtStep(phase: Phase, plan: Plan, conversationId: string, stepId: string | null) {
@@ -589,7 +595,7 @@ export function validatePlan(value: unknown): value is Plan {
       int(e.x, 0, cols - footprint(e)) && int(e.y, 0, rows - footprint(e)) &&
       Number.isFinite(e.radius) && e.radius >= 1 && e.radius <= MAX_RADIUS && (e.infinite === undefined || typeof e.infinite === 'boolean') && Number.isFinite(e.rotation) && e.rotation >= 0 && e.rotation < 360 &&
       num(e.inner, 0.5, MAX_RADIUS - 0.5) && num(e.angle, 10, 360) && num(e.castTime, 0, 600) && (e.image === undefined || (typeof e.image === 'string' && e.image.length <= 80)) && (e.marker === undefined || Object.hasOwn(markerTypes, e.marker)) && (e.targets === undefined || (Array.isArray(e.targets) && e.targets.length <= 60 && e.targets.every(t => typeof t === 'string'))) && num(e.width, 1, 8) && num(e.push, 1, 10) && (e.soak === undefined || int(e.soak, 1, 8)) && (e.size === undefined || int(e.size, 1, MAX_UNIT_SIZE)) &&
-      (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.faceToward === undefined || typeof e.faceToward === 'string') && (e.side === undefined || e.side === 'left' || e.side === 'right') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
+      (e.anchor === undefined || typeof e.anchor === 'string') && (e.followFacing === undefined || typeof e.followFacing === 'boolean') && (e.faceToward === undefined || typeof e.faceToward === 'string') && (e.side === undefined || e.side === 'left' || e.side === 'right') && (e.shownOn === undefined || typeof e.shownOn === 'string') && (e.trigger === undefined || validTrigger(e.trigger)) && (e.page === undefined || typeof e.page === 'string'));
   const validWaymarks = (w: Waymarks | undefined, cols: number, rows: number) => w === undefined || (!!w && typeof w === 'object' && !Array.isArray(w) &&
     Object.entries(w).every(([k, v]) => Object.hasOwn(waymarkTypes, k) && Array.isArray(v) && v.length === 2 && int(v[0], 0, cols - 1) && int(v[1], 0, rows - 1)));
   const num = (n: unknown, min: number, max: number) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max);

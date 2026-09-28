@@ -181,6 +181,7 @@ function MechanicFields({ plan, phase, m, onChange }: { plan: Plan; phase: Phase
           </label>
         )}
       </div>
+      {m.shownOn && <p className="hint">Drawn on this map only, not a timeline event. Right-click it to make it one.</p>}
       {m.kind === 'armageddon' && <p className="hint">Hits every walkable tile except Marker safe zones in this phase.</p>}
     </Group>
 
